@@ -1,6 +1,18 @@
 # 构建与验证记录
 
-日期：2026-10-13（Asia/Hong_Kong）。版本：0.1.0。
+日期：2026-10-13（Asia/Hong_Kong）。版本：0.1.1。
+
+## 0.1.1 安卓渲染接入修复
+
+用户手机截图确认 0.1.0 可安装并打开设置，但 `rendererStatus=unobserved`、`nativeHookAvailable=false`、消息行观察数为 0。截图未证明 Bing 请求失败，也未提供当前频道读取数量。
+
+新增 Classic `RowManager.prototype.generate` 的 after 钩子，在 DCDChatManager 不可用时保留原始消息节点并追加译文。按频道/消息事件重新发现延迟加载模块，并读取已初始化 Metro 导出，避免 Classic 的 NOT_FOUND 查询缓存永久阻断接入。仅使用 Classic 的 API，不导入 Revenge Next。
+
+四项新增渲染测试覆盖缺少原生桥、延迟加载、真实 TranslationService 完成后原生重绘、缓存未找到的模块恢复。另两项测试覆盖手动翻译没有当前频道或已加载消息时明确提示。三个渲染失败和两个状态提示失败均在修复前实际观察到。修复后完整 `npm run check` 退出码 0，65 项通过、0 失败；类型检查、构建和生成包生命周期校验通过。新增测试使用受控宿主，手机上的 0.1.1 尚待用户验证。
+
+0.1.1 构建 SHA-256：`6e4bfbc236ee1f7f57c5fa9527d963b4eb889a545d71e57ceb79440e194b7af0`。
+
+GitHub 0.1.0 构建及 Pages 部署已执行成功。新版本发布结果另行记录；下面的 59 项和旧哈希为 0.1.0 历史验证记录。
 
 ## 已执行并通过
 
@@ -31,6 +43,6 @@
 - Android 16 / Discord 348.10 / 用户安装的 Revenge Classic 的实际运行。
 - 手机原生模块名称、列表布局、滚动重测、切后台和卸载后的实际显示。
 - 真实 Microsoft Translator 订阅 Key 的鉴权和计费。
-- GitHub Actions / Pages 公开部署（没有仓库）；所提供工作流尚未在 GitHub 执行。
+- 0.1.1 安卓实机消息布局与滚动行为。
 
 项目提供原生/RN 格式保护与诊断。若手机没有观察到支持的渲染通道，不能声称移植已在该手机成功，需按 README 收集版本及不含密钥的诊断继续适配。

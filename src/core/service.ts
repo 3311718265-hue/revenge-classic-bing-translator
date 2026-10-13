@@ -96,7 +96,8 @@ export class TranslationService{
   }).finally(()=>{if(this.pending.get(key)===pending)this.pending.delete(key);if(!this.disposed)this.emit();});
   this.emit();return pending.promise;
  }
- async translateLoaded():Promise<void>{if(this.disposed)return;this.channelChanged();if(!this.current)return;this.lastError=null;const channel=this.current,epoch=this.epoch;const messages=this.options.getLoadedMessages(channel).slice().sort(byId);
+ async translateLoaded():Promise<void>{if(this.disposed)return;this.channelChanged();if(!this.current){this.lastError='尚未取得当前频道，请先进入文字频道并加载消息，再返回插件设置。';this.emit();return;}this.lastError=null;const channel=this.current,epoch=this.epoch;const messages=this.options.getLoadedMessages(channel).slice().sort(byId);
+  if(!messages.length){this.lastError='当前频道没有可读取的已加载消息，请打开文字频道并滚动加载，再重试。';this.emit();return;}
   // Batches cap retained promises and prevent queue overflow on very long loaded histories.
   for(let offset=0;offset<messages.length;offset+=100){if(this.epoch!==epoch||this.current!==channel||this.disposed)return;await Promise.all(messages.slice(offset,offset+100).map(message=>this.schedule(message,true,true)));}
  }

@@ -46,7 +46,7 @@ var ClassicBingPlugin = (() => {
     const React = common.React ?? globals.bunny?.metro?.common?.React;
     const RN = common.ReactNative ?? globals.bunny?.metro?.common?.ReactNative;
     const stats = { observedMessageRenders: 0, rejectedMessageProps: 0, rendererErrors: 0, registeredNames: [], observedComponent: null, activeRenderer: false };
-    const nativeStats = { nativeHookAvailable: false, nativeRowsObserved: 0, nativeRowsTranslated: 0, nativeUnsupportedRows: 0, nativeReplayCount: 0, nativeOriginalsLimitReached: false, nativeActive: false, nativeContentNodeRows: 0, nativeLocalRepaints: 0, nativeRepaintUnavailable: false, nativeRepaintLimitReached: false };
+    const nativeStats = { nativeHookAvailable: false, nativeRowsObserved: 0, nativeRowsTranslated: 0, nativeUnsupportedRows: 0, nativeReplayCount: 0, nativeOriginalsLimitReached: false, nativeActive: false, nativeContentNodeRows: 0, nativeLocalRepaints: 0, nativeRepaintUnavailable: false, nativeRepaintLimitReached: false, nativeRowManagerActive: false, nativeRowManagerHooks: 0, nativeDiscoveryAttempts: 0, nativeDiscoveryStatus: "waiting" };
     let restoreNative;
     const snowflake = (value) => typeof value === "string" && /^\d{15,22}$/.test(value);
     const ref = (record) => {
@@ -181,9 +181,7 @@ var ClassicBingPlugin = (() => {
         stats.observedComponent = null;
       };
     };
-    const installNativeTranslations = (source) => {
-      const candidates = [safely(() => RN?.NativeModules?.DCDChatManager), safely(() => findProps("DCDChatManager")?.DCDChatManager), safely(() => globals.nativeModuleProxy?.DCDChatManager), safely(() => globals.__turboModuleProxy?.("DCDChatManager"))];
-      const bridge = candidates.find((manager) => typeof manager?.updateRows === "function");
+    const installBridgeTranslations = (source, bridge) => {
       const before = api?.patcher?.before ?? globals.bunny?.api?.patcher?.before;
       nativeStats.nativeHookAvailable = typeof bridge?.updateRows === "function" && typeof before === "function";
       if (!nativeStats.nativeHookAvailable) return () => {
@@ -429,6 +427,164 @@ var ClassicBingPlugin = (() => {
         lastArgs = void 0;
       };
     };
+    const installNativeTranslations = (source) => {
+      let active = true, installed = false, refreshPending = false, attempts = 0;
+      let stopBridge;
+      const patches = [], seen = /* @__PURE__ */ new Set();
+      const tracked = /* @__PURE__ */ new Map(), painted = /* @__PURE__ */ new Map();
+      const after = api?.patcher?.after ?? globals.bunny?.api?.patcher?.after;
+      const before = api?.patcher?.before ?? globals.bunny?.api?.patcher?.before;
+      const stored = (message) => ref(safely(() => messageStore?.getMessage?.(message.channelId, message.id)));
+      const refreshRows = (restoreOnly = false) => {
+        if (!active || !nativeStats.nativeRowManagerActive) return;
+        const channel = getCurrentChannel();
+        if (!channel) return;
+        const messages = /* @__PURE__ */ new Map();
+        for (const message of [...tracked.values(), ...getLoadedMessages(channel)]) if (message.channelId === channel) messages.set(message.id, message);
+        for (const message of messages.values()) {
+          const current = stored(message);
+          if (!current || current.channelId !== channel) continue;
+          const translation = restoreOnly || stats.observedMessageRenders > 0 ? void 0 : safely(() => source.getTranslation(current));
+          const signature = translation?.text ? JSON.stringify([current.content, source.getSettings().targetLanguage, translation.text]) : "";
+          if (!painted.has(current.id) && !signature) continue;
+          if (!restoreOnly && painted.get(current.id) === signature) continue;
+          if (typeof dispatcher?.dispatch !== "function") {
+            nativeStats.nativeRepaintUnavailable = true;
+            continue;
+          }
+          painted.set(current.id, signature);
+          nativeStats.nativeLocalRepaints++;
+          try {
+            Promise.resolve(dispatcher.dispatch({ type: "MESSAGE_UPDATE", message: safely(() => messageStore.getMessage(channel, current.id)) })).catch(() => log.warn("Classic RowManager repaint failed"));
+          } catch {
+            log.warn("Classic RowManager repaint failed");
+          }
+        }
+        while (painted.size > 500) painted.delete(painted.keys().next().value);
+      };
+      const scheduleRefresh = () => {
+        if (!active || refreshPending) return;
+        refreshPending = true;
+        Promise.resolve().then(() => {
+          refreshPending = false;
+          if (active) refreshRows();
+        }).catch(() => log.warn("Classic RowManager refresh failed"));
+      };
+      const patchRowManager = (manager) => {
+        const parent = manager?.prototype;
+        if (typeof parent?.generate !== "function" || typeof after !== "function" || seen.has(parent) || seen.size >= 10) return;
+        try {
+          const unpatch = after("generate", parent, (args, row) => {
+            if (!active || args?.[0]?.rowType !== 1 || !row?.message) return row;
+            const message = ref(args[0].message), current = message && stored(message);
+            if (!message || !current || message.channelId !== getCurrentChannel() || current.content !== message.content || row.message.id !== current.id) return row;
+            const rowChannel = row.message.channelId ?? row.message.channel_id;
+            if (rowChannel !== void 0 && rowChannel !== current.channelId) return row;
+            const content = row.message.content;
+            if (!(typeof content === "string" && content === current.content) && !(Array.isArray(content) && content.every((node) => typeof node === "string" || node && typeof node === "object" && !Array.isArray(node) && typeof node.type === "string"))) {
+              nativeStats.nativeUnsupportedRows++;
+              return row;
+            }
+            nativeStats.nativeRowsObserved++;
+            if (Array.isArray(content)) nativeStats.nativeContentNodeRows++;
+            tracked.set(current.id, current);
+            while (tracked.size > 500) tracked.delete(tracked.keys().next().value);
+            Promise.resolve().then(() => {
+              if (active && getCurrentChannel() === current.channelId) source.consider(current);
+            }).catch(() => log.warn("Classic RowManager translation consideration failed"));
+            if (stats.observedMessageRenders > 0) return row;
+            const translation = safely(() => source.getTranslation(current)), target = safely(() => source.getSettings().targetLanguage);
+            if (typeof translation?.text !== "string" || !translation.text.trim() || typeof target !== "string" || target.length > 40 || /[\r\n]/.test(target)) return row;
+            nativeStats.nativeRowsTranslated++;
+            painted.set(current.id, JSON.stringify([current.content, target, translation.text]));
+            const next = Array.isArray(content) ? [...content, "\n", { type: "subtext", content: ["\u8BD1\u6587 \xB7 " + target] }, "\n", translation.text] : content + "\n\n[\u8BD1\u6587 \xB7 " + target + "]\n" + translation.text;
+            return { ...row, message: { ...row.message, content: next } };
+          });
+          seen.add(parent);
+          patches.push(unpatch);
+          nativeStats.nativeRowManagerHooks = seen.size;
+          nativeStats.nativeRowManagerActive = true;
+          nativeStats.nativeActive = true;
+          nativeStats.nativeDiscoveryStatus = "row-manager";
+          installed = true;
+          restoreNative = () => refreshRows(true);
+          scheduleRefresh();
+        } catch {
+          log.warn("Classic RowManager hook unavailable");
+        }
+      };
+      const discover = () => {
+        if (!active || stopBridge) return;
+        nativeStats.nativeDiscoveryAttempts++;
+        const initializedManagers = [], initializedBridges = [];
+        const modules = metro.modules ?? globals.modules;
+        if (modules && typeof modules === "object") for (const key of Object.keys(modules)) {
+          const entry = safely(() => modules[key]);
+          if (!entry?.isInitialized || entry.hasError) continue;
+          const exports = safely(() => entry.publicModule?.exports);
+          for (const value of [exports, safely(() => exports?.default), safely(() => exports?.RowManager)])
+            if (typeof value === "function" && value.name === "RowManager" && typeof value.prototype?.generate === "function") initializedManagers.push(value);
+          const bridge2 = safely(() => exports?.DCDChatManager);
+          if (typeof bridge2?.updateRows === "function") initializedBridges.push(bridge2);
+        }
+        const found = safely(() => metro.findByNameAll?.("RowManager"));
+        const managers = [...initializedManagers, ...Array.isArray(found) ? found : [], safely(() => metro.findByName?.("RowManager")), findProps("RowManager")?.RowManager];
+        for (const manager of managers) patchRowManager(manager?.default ?? manager);
+        if (nativeStats.nativeRowManagerActive) return;
+        const candidates = [...initializedBridges, safely(() => RN?.NativeModules?.DCDChatManager), safely(() => findProps("DCDChatManager")?.DCDChatManager), safely(() => globals.nativeModuleProxy?.DCDChatManager), safely(() => globals.__turboModuleProxy?.("DCDChatManager"))];
+        const bridge = candidates.find((manager) => typeof manager?.updateRows === "function");
+        if (!bridge || typeof before !== "function") return;
+        const stop = installBridgeTranslations(source, bridge);
+        if (nativeStats.nativeActive) {
+          stopBridge = stop;
+          installed = true;
+          nativeStats.nativeDiscoveryStatus = "native-bridge";
+        } else stop();
+      };
+      discover();
+      const retry = () => {
+        discover();
+        scheduleRefresh();
+      };
+      const stopObserve = observe((event) => {
+        if (!installed || event.type === "channel") retry();
+      });
+      const stopSource = source.subscribe(() => {
+        if (!installed) discover();
+        scheduleRefresh();
+      });
+      let retryTimer;
+      const waitForChat = () => {
+        retryTimer = setTimeout(() => {
+          retryTimer = void 0;
+          if (!active || installed || ++attempts >= 15) return;
+          retry();
+          if (!installed) waitForChat();
+        }, 1e3);
+      };
+      if (!installed) waitForChat();
+      return () => {
+        if (!active) return;
+        refreshRows(true);
+        active = false;
+        if (retryTimer !== void 0) clearTimeout(retryTimer);
+        stopObserve();
+        stopSource();
+        stopBridge?.();
+        for (const stop of patches.reverse()) try {
+          stop();
+        } catch {
+          log.warn("Classic RowManager cleanup failed");
+        }
+        tracked.clear();
+        painted.clear();
+        nativeStats.nativeRowManagerActive = false;
+        nativeStats.nativeRowManagerHooks = 0;
+        nativeStats.nativeActive = false;
+        nativeStats.nativeDiscoveryStatus = "stopped";
+        restoreNative = void 0;
+      };
+    };
     return {
       React,
       RN,
@@ -440,18 +596,21 @@ var ClassicBingPlugin = (() => {
       installMessageRenderer,
       installNativeTranslations,
       diagnostics: () => ({
+        pluginVersion: "0.1.1",
         classicApi: "vendetta + bunny.api.react.jsx",
+        currentChannelAvailable: !!getCurrentChannel(),
+        loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,
         messageStore: typeof messageStore?.getMessages === "function" && typeof messageStore?.getMessage === "function",
         selectedChannelStore: typeof channelStore?.getChannelId === "function",
         fluxDispatcher: typeof dispatcher?.subscribe === "function" && typeof dispatcher?.unsubscribe === "function",
         jsxHookApi: typeof jsx?.onJsxCreate === "function" && typeof jsx?.deleteJsxCreate === "function",
-        rendererStatus: stats.observedMessageRenders > 0 ? "observed" : stats.activeRenderer ? "unobserved" : "unsupported",
-        rendererExplanation: stats.observedMessageRenders > 0 ? "Validated message JSX observed; phone layout still requires verification." : "No validated message JSX has been observed. Native chat rows or changed Discord component names may require a different adapter.",
+        rendererStatus: stats.observedMessageRenders > 0 ? "observed" : nativeStats.nativeRowsObserved > 0 ? "native-observed" : stats.activeRenderer ? "unobserved" : "unsupported",
+        rendererExplanation: stats.observedMessageRenders > 0 ? "Validated message JSX observed; phone layout still requires verification." : nativeStats.nativeRowsObserved > 0 ? "Validated native message rows observed; bilingual native content is active." : "No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.",
         ...stats,
         ...nativeStats,
         registeredNames: [...stats.registeredNames],
         nativeChatBridge: nativeStats.nativeHookAvailable || typeof RN?.NativeModules?.DCDChatManager?.updateRows === "function",
-        nativeSchema: "DCDChatManager.updateRows(logIndex, JSON rows, flag); verified row identity, native content nodes or exact source plaintext; Discord 348.10 phone verification pending."
+        nativeSchema: "Classic RowManager.generate(data) or DCDChatManager.updateRows(tag, JSON rows, flag); verified record identity and copied native content; phone verification pending."
       })
     };
   }
@@ -1093,10 +1252,19 @@ var ClassicBingPlugin = (() => {
     async translateLoaded() {
       if (this.disposed) return;
       this.channelChanged();
-      if (!this.current) return;
+      if (!this.current) {
+        this.lastError = "\u5C1A\u672A\u53D6\u5F97\u5F53\u524D\u9891\u9053\uFF0C\u8BF7\u5148\u8FDB\u5165\u6587\u5B57\u9891\u9053\u5E76\u52A0\u8F7D\u6D88\u606F\uFF0C\u518D\u8FD4\u56DE\u63D2\u4EF6\u8BBE\u7F6E\u3002";
+        this.emit();
+        return;
+      }
       this.lastError = null;
       const channel = this.current, epoch = this.epoch;
       const messages = this.options.getLoadedMessages(channel).slice().sort(byId);
+      if (!messages.length) {
+        this.lastError = "\u5F53\u524D\u9891\u9053\u6CA1\u6709\u53EF\u8BFB\u53D6\u7684\u5DF2\u52A0\u8F7D\u6D88\u606F\uFF0C\u8BF7\u6253\u5F00\u6587\u5B57\u9891\u9053\u5E76\u6EDA\u52A8\u52A0\u8F7D\uFF0C\u518D\u91CD\u8BD5\u3002";
+        this.emit();
+        return;
+      }
       for (let offset = 0; offset < messages.length; offset += 100) {
         if (this.epoch !== epoch || this.current !== channel || this.disposed) return;
         await Promise.all(messages.slice(offset, offset + 100).map((message) => this.schedule(message, true, true)));

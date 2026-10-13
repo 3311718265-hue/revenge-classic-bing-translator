@@ -4,15 +4,17 @@ Android 16、Discord 348.10 为目标环境。使用 Revenge **Classic** 的 Sou
 
 此项目实际包含可编辑源码、构建脚本、可执行测试，以及构建出的 `dist/bing-translator/manifest.json` / `index.js`。它是 Android 移植，不加载 BetterDiscord 或网页 DOM。
 
-## 当前安装链接
+## 0.1.1 安卓消息行修复
 
-已构建文件可从以下 Source URL 安装（地址末尾保留斜杠）：
+新增 Classic `RowManager.generate` 渲染接入，不再依赖手机必须暴露 `DCDChatManager`。支持延迟加载的消息模块，并检查已初始化 Metro 导出以应对缓存未找到结果。原文和原始节点不变，翻译完成后请求本地消息行重绘；清除、编辑、频道切换和卸载都有相应保护。
+
+从已有 Source URL 更新插件并重启 Discord。先进入文字频道加载消息，再检查诊断：`pluginVersion` 应为 `0.1.1`，`nativeRowManagerActive` 或原生桥状态应为 true，消息观察数应随消息加载增加。0.1.1 已通过 65 项测试及构建，手机上的修复效果仍需用户验证。
+
+安装 Source URL（保留末尾斜杠）：
 
 ```text
-https://raw.githubusercontent.com/3311718265-hue/revenge-classic-bing-translator/main/bing-translator/
+https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/
 ```
-
-GitHub Pages 部署完成后，也可使用首页提供的 Source URL。安装后的 Android 实机行为尚未验证。
 
 ## 当前验证状态
 
@@ -20,7 +22,7 @@ GitHub Pages 部署完成后，也可使用首页提供的 Source URL。安装�
 - 已对 Bing 网页接口执行实际多语种请求，包括当前源码的 `createTranslator`。详情见 [Bing 证据](docs/bing-evidence.md)。这不代表长期稳定，也不证明手机网络环境相同。
 - 没有连接 Android 手机。Discord 348.10 上的渲染、历史滚动、应用切后台和卸载效果尚未实机验收。
 - Microsoft 官方 API 的 HTTP 合约已测试；未使用真实订阅密钥执行请求。
-- 本仓库提供公开源码及已构建 Source URL；Pages 状态以实际工作流结果为准。
+- GitHub 仓库和 Pages 已发布；部署及本次更新状态以 Actions 结果和线上 manifest 版本为准。
 
 ## 功能与操作
 
@@ -72,7 +74,7 @@ npm run probe:bing
 4. 打开工作流输出的 Pages 首页，复制该页计算出的 **Source URL**。地址的最后一段是 `/bing-translator/`，而不是 `index.js`、仓库主页或 ZIP。
 5. 在手机 Revenge Classic → Settings → Plugins → 添加插件，粘贴 Source URL 并启用。切勿按 Revenge Next 的“插件仓库/ZIP”格式安装。
 
-`dist` 已可直接部署到兼容的 HTTPS 静态文件主机。应能公开访问 Source URL 下的 `manifest.json` 和 `index.js`，不要使用登录后才能访问的链接。Windows 本地文件路径不能直接填为手机 Source URL。
+`dist` 已可直接部署到兼容的 HTTPS 静态文件主机。应能公开访问 Source URL 下的 `manifest.json` 和 `index.js`，不要使用登录后才能访问的链接。`the local delivery directory` 本地路径不能直接填为手机 Source URL。
 
 ## 手机验收
 

@@ -25,7 +25,7 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
   const React=common.React??globals.bunny?.metro?.common?.React;
   const RN=common.ReactNative??globals.bunny?.metro?.common?.ReactNative;
   const stats={observedMessageRenders:0,rejectedMessageProps:0,rendererErrors:0,registeredNames:[] as string[],observedComponent:null as string|null,activeRenderer:false};
-  const nativeStats={nativeHookAvailable:false,nativeRowsObserved:0,nativeRowsTranslated:0,nativeUnsupportedRows:0,nativeReplayCount:0,nativeOriginalsLimitReached:false,nativeActive:false,nativeContentNodeRows:0,nativeLocalRepaints:0,nativeRepaintUnavailable:false,nativeRepaintLimitReached:false};
+  const nativeStats={nativeHookAvailable:false,nativeRowsObserved:0,nativeRowsTranslated:0,nativeUnsupportedRows:0,nativeReplayCount:0,nativeOriginalsLimitReached:false,nativeActive:false,nativeContentNodeRows:0,nativeLocalRepaints:0,nativeRepaintUnavailable:false,nativeRepaintLimitReached:false,nativeRowManagerActive:false,nativeRowManagerHooks:0,nativeDiscoveryAttempts:0,nativeDiscoveryStatus:'waiting'};
   let restoreNative:(()=>void)|undefined;
   const snowflake=(value:any):value is string=>typeof value==='string'&&/^\d{15,22}$/.test(value);
   const ref=(record:any):MessageRef|null=>{
@@ -123,9 +123,7 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
       stats.registeredNames=[];stats.observedComponent=null;
     };
   };
-  const installNativeTranslations:NonNullable<ClassicHost['installNativeTranslations']>=(source)=>{
-    const candidates=[safely(()=>RN?.NativeModules?.DCDChatManager),safely(()=>findProps('DCDChatManager')?.DCDChatManager),safely(()=>globals.nativeModuleProxy?.DCDChatManager),safely(()=>globals.__turboModuleProxy?.('DCDChatManager'))];
-    const bridge=candidates.find(manager=>typeof manager?.updateRows==='function');
+  const installBridgeTranslations=(source:Parameters<NonNullable<ClassicHost['installNativeTranslations']>>[0],bridge:any)=>{
     const before=api?.patcher?.before??globals.bunny?.api?.patcher?.before;
     nativeStats.nativeHookAvailable=typeof bridge?.updateRows==='function'&&typeof before==='function';
     if(!nativeStats.nativeHookAvailable)return ()=>{};
@@ -279,17 +277,123 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
       originals.clear();sourceRevisions.clear();repaintKeys.clear();lastArgs=undefined;
     };
   };
+  const installNativeTranslations:NonNullable<ClassicHost['installNativeTranslations']>=(source)=>{
+    let active=true,installed=false,refreshPending=false,attempts=0;
+    let stopBridge:(()=>void)|undefined;
+    const patches:Array<()=>void>=[],seen=new Set<any>();
+    const tracked=new Map<string,MessageRef>(),painted=new Map<string,string>();
+    const after=api?.patcher?.after??globals.bunny?.api?.patcher?.after;
+    const before=api?.patcher?.before??globals.bunny?.api?.patcher?.before;
+    const stored=(message:MessageRef)=>ref(safely(()=>messageStore?.getMessage?.(message.channelId,message.id)));
+    const refreshRows=(restoreOnly=false)=>{
+      if(!active||!nativeStats.nativeRowManagerActive)return;
+      const channel=getCurrentChannel();if(!channel)return;
+      const messages=new Map<string,MessageRef>();
+      for(const message of [...tracked.values(),...getLoadedMessages(channel)])if(message.channelId===channel)messages.set(message.id,message);
+      for(const message of messages.values()){
+        const current=stored(message);if(!current||current.channelId!==channel)continue;
+        const translation=restoreOnly||stats.observedMessageRenders>0?undefined:safely(()=>source.getTranslation(current));
+        const signature=translation?.text?JSON.stringify([current.content,source.getSettings().targetLanguage,translation.text]):'';
+        if(!painted.has(current.id)&&!signature)continue;
+        if(!restoreOnly&&painted.get(current.id)===signature)continue;
+        if(typeof dispatcher?.dispatch!=='function'){nativeStats.nativeRepaintUnavailable=true;continue;}
+        painted.set(current.id,signature);nativeStats.nativeLocalRepaints++;
+        try{Promise.resolve(dispatcher.dispatch({type:'MESSAGE_UPDATE',message:safely(()=>messageStore.getMessage(channel,current.id))})).catch(()=>log.warn('Classic RowManager repaint failed'));}
+        catch{log.warn('Classic RowManager repaint failed');}
+      }
+      while(painted.size>500)painted.delete(painted.keys().next().value!);
+    };
+    const scheduleRefresh=()=>{
+      if(!active||refreshPending)return;refreshPending=true;
+      Promise.resolve().then(()=>{refreshPending=false;if(active)refreshRows();}).catch(()=>log.warn('Classic RowManager refresh failed'));
+    };
+    const patchRowManager=(manager:any)=>{
+      const parent=manager?.prototype;
+      if(typeof parent?.generate!=='function'||typeof after!=='function'||seen.has(parent)||seen.size>=10)return;
+      try{
+        const unpatch=after('generate',parent,(args:any[],row:any)=>{
+          if(!active||args?.[0]?.rowType!==1||!row?.message)return row;
+          const message=ref(args[0].message),current=message&&stored(message);
+          if(!message||!current||message.channelId!==getCurrentChannel()||current.content!==message.content||row.message.id!==current.id)return row;
+          const rowChannel=row.message.channelId??row.message.channel_id;
+          if(rowChannel!==undefined&&rowChannel!==current.channelId)return row;
+          const content=row.message.content;
+          if(!(typeof content==='string'&&content===current.content)&&!(Array.isArray(content)&&content.every(node=>typeof node==='string'||(node&&typeof node==='object'&&!Array.isArray(node)&&typeof node.type==='string')))){
+            nativeStats.nativeUnsupportedRows++;return row;
+          }
+          nativeStats.nativeRowsObserved++;if(Array.isArray(content))nativeStats.nativeContentNodeRows++;
+          tracked.set(current.id,current);while(tracked.size>500)tracked.delete(tracked.keys().next().value!);
+          Promise.resolve().then(()=>{if(active&&getCurrentChannel()===current.channelId)source.consider(current);}).catch(()=>log.warn('Classic RowManager translation consideration failed'));
+          if(stats.observedMessageRenders>0)return row;
+          const translation=safely(()=>source.getTranslation(current)),target=safely(()=>source.getSettings().targetLanguage);
+          if(typeof translation?.text!=='string'||!translation.text.trim()||typeof target!=='string'||target.length>40||/[\r\n]/.test(target))return row;
+          nativeStats.nativeRowsTranslated++;
+          painted.set(current.id,JSON.stringify([current.content,target,translation.text]));
+          const next=Array.isArray(content)?[...content,'\n',{type:'subtext',content:['译文 · '+target]},'\n',translation.text]:content+'\n\n[译文 · '+target+']\n'+translation.text;
+          return {...row,message:{...row.message,content:next}};
+        });
+        seen.add(parent);patches.push(unpatch);nativeStats.nativeRowManagerHooks=seen.size;
+        nativeStats.nativeRowManagerActive=true;nativeStats.nativeActive=true;nativeStats.nativeDiscoveryStatus='row-manager';installed=true;
+        restoreNative=()=>refreshRows(true);scheduleRefresh();
+      }catch{log.warn('Classic RowManager hook unavailable');}
+    };
+    const discover=()=>{
+      if(!active||stopBridge)return;
+      nativeStats.nativeDiscoveryAttempts++;
+      const initializedManagers:any[]=[],initializedBridges:any[]=[];
+      const modules=metro.modules??globals.modules;
+      // Classic caches NOT_FOUND results. Only inspect already initialized
+      // exports here; never force-load arbitrary factories or invalidate caches.
+      if(modules&&typeof modules==='object')for(const key of Object.keys(modules)){
+        const entry=safely(()=>modules[key]);if(!entry?.isInitialized||entry.hasError)continue;
+        const exports=safely(()=>entry.publicModule?.exports);
+        for(const value of [exports,safely(()=>exports?.default),safely(()=>exports?.RowManager)])
+          if(typeof value==='function'&&value.name==='RowManager'&&typeof value.prototype?.generate==='function')initializedManagers.push(value);
+        const bridge=safely(()=>exports?.DCDChatManager);if(typeof bridge?.updateRows==='function')initializedBridges.push(bridge);
+      }
+      // Android need not expose the iOS-style DCDChatManager bridge. RowManager
+      // is upstream of native serialization and uses the Classic after contract.
+      const found=safely(()=>metro.findByNameAll?.('RowManager'));
+      const managers=[...initializedManagers,...(Array.isArray(found)?found:[]),safely(()=>metro.findByName?.('RowManager')),findProps('RowManager')?.RowManager];
+      for(const manager of managers)patchRowManager(manager?.default??manager);
+      if(nativeStats.nativeRowManagerActive)return;
+      const candidates=[...initializedBridges,safely(()=>RN?.NativeModules?.DCDChatManager),safely(()=>findProps('DCDChatManager')?.DCDChatManager),safely(()=>globals.nativeModuleProxy?.DCDChatManager),safely(()=>globals.__turboModuleProxy?.('DCDChatManager'))];
+      const bridge=candidates.find(manager=>typeof manager?.updateRows==='function');
+      if(!bridge||typeof before!=='function')return;
+      const stop=installBridgeTranslations(source,bridge);
+      if(nativeStats.nativeActive){stopBridge=stop;installed=true;nativeStats.nativeDiscoveryStatus='native-bridge';}
+      else stop();
+    };
+    discover();
+    const retry=()=>{discover();scheduleRefresh();};
+    const stopObserve=observe(event=>{if(!installed||event.type==='channel')retry();});
+    const stopSource=source.subscribe(()=>{if(!installed)discover();scheduleRefresh();});
+    // Retry briefly across lazy startup; future channel/message events keep
+    // discovery possible without continuously scanning Metro after startup.
+    let retryTimer:ReturnType<typeof setTimeout>|undefined;
+    const waitForChat=()=>{retryTimer=setTimeout(()=>{retryTimer=undefined;if(!active||installed||++attempts>=15)return;retry();if(!installed)waitForChat();},1000);};
+    if(!installed)waitForChat();
+    return ()=>{
+      if(!active)return;
+      refreshRows(true);active=false;
+      if(retryTimer!==undefined)clearTimeout(retryTimer);
+      stopObserve();stopSource();stopBridge?.();
+      for(const stop of patches.reverse())try{stop();}catch{log.warn('Classic RowManager cleanup failed');}
+      tracked.clear();painted.clear();nativeStats.nativeRowManagerActive=false;nativeStats.nativeRowManagerHooks=0;nativeStats.nativeActive=false;nativeStats.nativeDiscoveryStatus='stopped';restoreNative=undefined;
+    };
+  };
   return {React,RN,storage:storage??{},logger:log,getCurrentChannel,getLoadedMessages,observe,installMessageRenderer,installNativeTranslations,
     diagnostics:()=>({
-      classicApi:'vendetta + bunny.api.react.jsx',
+      pluginVersion:'0.1.1',classicApi:'vendetta + bunny.api.react.jsx',
+      currentChannelAvailable:!!getCurrentChannel(),loadedMessageCount:getCurrentChannel()?getLoadedMessages(getCurrentChannel()!).length:0,
       messageStore:typeof messageStore?.getMessages==='function'&&typeof messageStore?.getMessage==='function',
       selectedChannelStore:typeof channelStore?.getChannelId==='function',
       fluxDispatcher:typeof dispatcher?.subscribe==='function'&&typeof dispatcher?.unsubscribe==='function',
       jsxHookApi:typeof jsx?.onJsxCreate==='function'&&typeof jsx?.deleteJsxCreate==='function',
-      rendererStatus:stats.observedMessageRenders>0?'observed':stats.activeRenderer?'unobserved':'unsupported',
-      rendererExplanation:stats.observedMessageRenders>0?'Validated message JSX observed; phone layout still requires verification.':'No validated message JSX has been observed. Native chat rows or changed Discord component names may require a different adapter.',
+      rendererStatus:stats.observedMessageRenders>0?'observed':nativeStats.nativeRowsObserved>0?'native-observed':stats.activeRenderer?'unobserved':'unsupported',
+      rendererExplanation:stats.observedMessageRenders>0?'Validated message JSX observed; phone layout still requires verification.':nativeStats.nativeRowsObserved>0?'Validated native message rows observed; bilingual native content is active.':'No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.',
       ...stats,...nativeStats,registeredNames:[...stats.registeredNames],
       nativeChatBridge:nativeStats.nativeHookAvailable||typeof RN?.NativeModules?.DCDChatManager?.updateRows==='function',
-      nativeSchema:'DCDChatManager.updateRows(logIndex, JSON rows, flag); verified row identity, native content nodes or exact source plaintext; Discord 348.10 phone verification pending.',
+      nativeSchema:'Classic RowManager.generate(data) or DCDChatManager.updateRows(tag, JSON rows, flag); verified record identity and copied native content; phone verification pending.',
     })};
 }

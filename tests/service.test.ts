@@ -2,6 +2,12 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {TranslationService} from '../src/core/service';
 const msg=(id:string,content:string,channelId='one')=>({id,content,channelId});
+for(const channel of [null,'one'])test('manual translation explains missing '+(channel?'loaded messages':'selected channel'),async()=>{
+ let requests=0,notifications=0;
+ const service=new TranslationService({getCurrentChannel:()=>channel,getLoadedMessages:()=>[],createProvider:()=>({translate:async()=>{requests++;return {text:'translated'};}})});
+ const stop=service.subscribe(()=>notifications++);
+ try{await service.translateLoaded();assert.ok(service.getStatus().lastError,'empty manual translation must explain why no request started');assert.ok(notifications>0);assert.equal(requests,0);}finally{stop();service.dispose();}
+});
 function setup(){let channel='one';let messages=[msg('103','c'),msg('101','a'),msg('102','b')];const calls:string[]=[];
  const service=new TranslationService({getCurrentChannel:()=>channel,getLoadedMessages:()=>messages,settings:{autoTranslate:false,minIntervalMs:0},createProvider:()=>({translate:async(text:string)=>{calls.push(text);return {text:'译 '+text,detectedLanguage:'en'};}})});
  return {service,calls,setChannel(value:string){channel=value;},setMessages(value:typeof messages){messages=value;},messages};
