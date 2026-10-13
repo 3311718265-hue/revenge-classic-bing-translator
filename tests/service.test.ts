@@ -18,6 +18,20 @@ test('loaded messages are chronological and all resolve without modifying origin
 test('repeated content and repeated scans share cached work',async()=>{
  const s=setup();s.setMessages([msg('101','same'),msg('102','same')]);await s.service.translateLoaded();await s.service.translateLoaded();assert.deepEqual(s.calls,['same']);
 });
+test('explicit single-message translation works with auto mode off and does not translate other history',async()=>{
+ const s=setup();try{
+  assert.equal(typeof (s.service as any).translateMessage,'function');
+  const result=await (s.service as any).translateMessage(s.messages[1]);
+  assert.equal(result.text,'译 a');assert.deepEqual(s.calls,['a']);
+  await (s.service as any).translateMessage(s.messages[1]);assert.deepEqual(s.calls,['a']);
+  s.setMessages([msg('101','edited')]);const revised=await (s.service as any).translateMessage(msg('101','a'));
+  assert.equal(revised.text,'译 edited');assert.deepEqual(s.calls,['a','edited']);
+ }finally{s.service.dispose();}
+});
+test('a successful unchanged manual result is returned without duplicating inline source content',async()=>{
+ const message=msg('101','Hello');const service=new TranslationService({settings:{autoTranslate:false},getCurrentChannel:()=> 'one',getLoadedMessages:()=>[message],createProvider:()=>({translate:async()=>({text:'Hello',detectedLanguage:'en'})})});
+ try{assert.equal((await service.translateMessage(message))?.text,'Hello');assert.equal(service.getTranslation(message),undefined);assert.equal(service.getStatus().translated,0);}finally{service.dispose();}
+});
 test('edited content and language changes cannot reuse an unrelated translation',async()=>{
  const s=setup();await s.service.translateLoaded();assert.equal(s.service.getTranslation(msg('101','changed')),undefined);
  s.service.configure({targetLanguage:'ja'});assert.equal(s.service.getTranslation(msg('101','a')),undefined);await s.service.translateLoaded();assert.equal(s.calls.length,6);

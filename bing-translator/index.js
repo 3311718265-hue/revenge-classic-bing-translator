@@ -24,6 +24,147 @@ var ClassicBingPlugin = (() => {
     default: () => index_default
   });
 
+  // src/runtime/message-menu.ts
+  function installClassicMessageMenu(api, host, source, stats) {
+    let active = true, unpatch;
+    const busy = /* @__PURE__ */ new Set(), React = host.React;
+    const safe = (fn) => {
+      try {
+        return fn();
+      } catch {
+        return void 0;
+      }
+    };
+    const find = (...keys) => {
+      const modules = api?.metro?.modules;
+      if (modules && typeof modules === "object") for (const entry of Object.values(modules)) {
+        if (!entry?.isInitialized || entry.hasError) continue;
+        for (const value of [safe(() => entry.publicModule?.exports), safe(() => entry.publicModule?.exports?.default)]) if (value && safe(() => keys.every((key) => value[key] !== void 0))) return value;
+      }
+      return safe(() => api?.metro?.findByProps?.(...keys));
+    };
+    const current = (message) => host.getCurrentChannel() === message.channelId ? host.getLoadedMessages(message.channelId).find((m) => m.id === message.id && m.content === message.content) : void 0;
+    const messageFor = (props) => {
+      const record = props?.message, channel = record?.channel_id ?? record?.channelId ?? props?.channel?.id;
+      return typeof channel === "string" ? host.getLoadedMessages(channel).find((m) => m.id === record?.id && m.channelId === channel && m.content === record?.content) : void 0;
+    };
+    const notify = (text) => safe(() => api.ui?.toasts?.showToast?.(text));
+    const addRow = (tree, message) => {
+      const components = find("ActionSheetRow"), Row = components?.ActionSheetRow, Sheet = components?.ActionSheet ?? find("ActionSheet")?.ActionSheet, Group = Row?.Group;
+      if (!Row || !Sheet || !Group) {
+        stats.messageMenuMissingComponents++;
+        return tree;
+      }
+      const target = source.getSettings().targetLanguage;
+      const onPress = async () => {
+        if (!active || !current(message) || busy.has(message.id)) return;
+        if (source.getSettings().targetLanguage !== target) {
+          notify("\u76EE\u6807\u8BED\u8A00\u5DF2\u6539\u53D8\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6D88\u606F\u83DC\u5355\u3002");
+          return;
+        }
+        busy.add(message.id);
+        safe(() => find("openLazy", "hideActionSheet")?.hideActionSheet());
+        try {
+          const result2 = await source.translateMessage(message);
+          if (!active || !current(message) || source.getSettings().targetLanguage !== target) return;
+          if (!result2?.text) {
+            notify(source.getStatus().lastError ?? "\u6CA1\u6709\u53D6\u5F97\u8BD1\u6587\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u67E5\u770B\u72B6\u6001\u3002");
+            return;
+          }
+          const show = api.ui?.alerts?.showConfirmationAlert;
+          if (typeof show === "function") show({ title: "\u8BD1\u6587 \xB7 " + target, content: result2.text === message.content ? "\u670D\u52A1\u8FD4\u56DE\u5185\u5BB9\u4E0E\u539F\u6587\u76F8\u540C\u3002\n\n" + result2.text : result2.text, confirmText: "\u5173\u95ED", onConfirm: () => {
+          } });
+          else notify("\u5DF2\u53D6\u5F97\u8BD1\u6587\uFF1B\u6B64\u5BA2\u6237\u7AEF\u7F3A\u5C11\u8BD1\u6587\u67E5\u770B\u7A97\u53E3\uFF0C\u8BF7\u68C0\u67E5\u63D2\u4EF6\u8BCA\u65AD\u3002");
+        } catch {
+          if (active) notify("\u7FFB\u8BD1\u8BF7\u6C42\u5931\u8D25\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u67E5\u770B\u72B6\u6001\u3002");
+        } finally {
+          busy.delete(message.id);
+        }
+      };
+      const Boundary = api.ui?.components?.ErrorBoundary;
+      const group = React.createElement(Group, { key: "classic-bing-translate" }, React.createElement(Row, { label: "\u7FFB\u8BD1\u8FD9\u6761\u6D88\u606F", subLabel: "\u76EE\u6807\u8BED\u8A00\uFF1A" + target, onPress }));
+      const entry = Boundary ? React.createElement(Boundary, { key: "classic-bing-translate" }, group) : group;
+      let inserted = false, visited = 0;
+      const walk = (node, inside = false, depth = 0) => {
+        if (++visited > 400 || depth > 40 || !node) return node;
+        if (Array.isArray(node)) {
+          let changed = false;
+          const next2 = node.map((child) => {
+            const value = walk(child, inside, depth + 1);
+            changed || (changed = value !== child);
+            return value;
+          });
+          return changed ? next2 : node;
+        }
+        if (!React.isValidElement(node)) return node;
+        const within = inside || node.type === Sheet, children = node.props.children, list = Array.isArray(children) ? children : [children];
+        if (!inserted && within && list.some((child) => child?.type === Group)) {
+          inserted = true;
+          return React.cloneElement(node, {}, [entry, ...list]);
+        }
+        const next = walk(children, within, depth + 1);
+        return next === children ? node : React.cloneElement(node, {}, next);
+      };
+      const result = walk(tree);
+      if (inserted) stats.messageMenuInjections++;
+      else stats.messageMenuNoContainer++;
+      return result;
+    };
+    const discover = () => {
+      if (!active || unpatch || typeof React?.cloneElement !== "function") return;
+      const sheets = find("openLazy", "hideActionSheet"), before = api?.patcher?.before;
+      if (typeof sheets?.openLazy !== "function" || typeof before !== "function") return;
+      try {
+        unpatch = before("openLazy", sheets, (args) => {
+          if (!active) return;
+          stats.messageMenuCalls++;
+          const [lazy, key, props] = args;
+          if (typeof key !== "string" || !/message/i.test(key) || /channel|forum|guild|thread/i.test(key)) return;
+          stats.messageMenuObserved++;
+          const message = messageFor(props);
+          if (!message || !current(message) || !lazy || typeof lazy.then !== "function") {
+            stats.messageMenuRejected++;
+            return;
+          }
+          const next = [...args];
+          next[0] = lazy.then((mod) => {
+            if (!active || typeof mod?.default !== "function") return mod;
+            const Original = mod.default;
+            return { ...mod, default: function ClassicBingMessageSheet(componentProps) {
+              const tree = Original(componentProps);
+              if (!active) return tree;
+              try {
+                const actual = messageFor(componentProps);
+                if (!actual || !current(actual)) {
+                  stats.messageMenuRejected++;
+                  return tree;
+                }
+                return addRow(tree, actual);
+              } catch {
+                stats.messageMenuInjectionErrors++;
+                return tree;
+              }
+            } };
+          });
+          return next;
+        });
+        stats.messageMenuHookAvailable = true;
+      } catch {
+        stats.messageMenuInjectionErrors++;
+      }
+    };
+    discover();
+    const stopObserve = host.observe(discover);
+    return () => {
+      if (!active) return;
+      active = false;
+      stopObserve();
+      unpatch?.();
+      busy.clear();
+      stats.messageMenuHookAvailable = false;
+    };
+  }
+
   // src/runtime/classic.ts
   function createClassicHost(api, storage, logger) {
     const globals = globalThis;
@@ -46,6 +187,9 @@ var ClassicBingPlugin = (() => {
     const React = common.React ?? globals.bunny?.metro?.common?.React;
     const RN = common.ReactNative ?? globals.bunny?.metro?.common?.ReactNative;
     const stats = { observedMessageRenders: 0, rejectedMessageProps: 0, rendererErrors: 0, registeredNames: [], observedComponent: null, activeRenderer: false };
+    const menuStats = { messageMenuHookAvailable: false, messageMenuCalls: 0, messageMenuObserved: 0, messageMenuInjections: 0, messageMenuRejected: 0, messageMenuMissingComponents: 0, messageMenuNoContainer: 0, messageMenuInjectionErrors: 0 };
+    const generateRejected = {};
+    let lastGenerateShape = null, nativeGenerateCalls = 0;
     const nativeStats = { nativeHookAvailable: false, nativeRowsObserved: 0, nativeRowsTranslated: 0, nativeUnsupportedRows: 0, nativeReplayCount: 0, nativeOriginalsLimitReached: false, nativeActive: false, nativeContentNodeRows: 0, nativeLocalRepaints: 0, nativeRepaintUnavailable: false, nativeRepaintLimitReached: false, nativeRowManagerActive: false, nativeRowManagerHooks: 0, nativeDiscoveryAttempts: 0, nativeDiscoveryStatus: "waiting" };
     let restoreNative;
     const snowflake = (value) => typeof value === "string" && /^\d{15,22}$/.test(value);
@@ -487,21 +631,32 @@ var ClassicBingPlugin = (() => {
         if (typeof parent?.generate !== "function" || typeof after !== "function" || seen.has(parent) || seen.size >= 10) return;
         try {
           const unpatch = after("generate", parent, (args, row) => {
-            if (!active || args?.[0]?.rowType !== 1 || !row?.message) return row;
+            if (!active) return row;
+            nativeGenerateCalls++;
+            lastGenerateShape = { argumentCount: args?.length ?? 0, inputHasMessage: !!args?.[0]?.message, inputContentKind: typeof args?.[0]?.message?.content, rowTypeIsMessage: args?.[0]?.rowType === 1, resultKind: typeof row, resultHasMessage: !!row?.message, resultContentIsArray: Array.isArray(row?.message?.content) };
+            const reject = (reason) => {
+              generateRejected[reason] = (generateRejected[reason] ?? 0) + 1;
+              return row;
+            };
+            if (args?.[0]?.rowType !== 1) return reject("rowKind");
+            if (!row?.message) return reject("rowShape");
             const message = ref(args[0].message), current = message && stored(message);
-            if (!message || !current || message.channelId !== getCurrentChannel() || current.content !== message.content || row.message.id !== current.id) return row;
+            if (!message) return reject("sourceShape");
+            if (!current) return reject("storeRecord");
+            if (message.channelId !== getCurrentChannel() || current.content !== message.content) return reject("sourceMismatch");
+            if (row.message.id !== current.id) return reject("rowIdentity");
             const rowChannel = row.message.channelId ?? row.message.channel_id;
-            if (rowChannel !== void 0 && rowChannel !== current.channelId) return row;
+            if (rowChannel !== void 0 && rowChannel !== current.channelId) return reject("rowChannel");
             const nativeMessage = row.message;
             if (nativeMessage === args[0].message || nativeMessage === safely(() => messageStore.getMessage(current.channelId, current.id))) {
               nativeStats.nativeUnsupportedRows++;
-              return row;
+              return reject("sourceAlias");
             }
             const previous = generatedContent.get(nativeMessage);
             const content = previous && nativeMessage.content === previous.replacement ? previous.original : nativeMessage.content;
             if (!(typeof content === "string" && content === current.content) && !(Array.isArray(content) && content.every((node) => typeof node === "string" || node && typeof node === "object" && !Array.isArray(node) && typeof node.type === "string"))) {
               nativeStats.nativeUnsupportedRows++;
-              return row;
+              return reject("contentShape");
             }
             nativeStats.nativeRowsObserved++;
             if (Array.isArray(content)) nativeStats.nativeContentNodeRows++;
@@ -583,27 +738,36 @@ var ClassicBingPlugin = (() => {
         } else stop();
       };
       discover();
+      let discoveryPending = false;
+      const requestDiscovery = () => {
+        if (!active || discoveryPending || stopBridge) return;
+        discoveryPending = true;
+        Promise.resolve().then(() => {
+          discoveryPending = false;
+          if (active) discover();
+        }).catch(() => log.warn("Classic deferred message discovery failed"));
+      };
       const retry = () => {
-        discover();
+        requestDiscovery();
         scheduleRefresh();
       };
       const stopObserve = observe((event) => {
-        if (!installed || event.type === "channel") retry();
+        if (!installed || nativeStats.nativeRowsObserved === 0 || event.type === "channel") retry();
       });
       const stopSource = source.subscribe(() => {
-        if (!installed) discover();
+        if (!installed || nativeStats.nativeRowsObserved === 0) requestDiscovery();
         scheduleRefresh();
       });
       let retryTimer;
       const waitForChat = () => {
         retryTimer = setTimeout(() => {
           retryTimer = void 0;
-          if (!active || installed || ++attempts >= 15) return;
+          if (!active || stopBridge || nativeStats.nativeRowsObserved > 0 || ++attempts >= 15) return;
           retry();
-          if (!installed) waitForChat();
+          if (nativeStats.nativeRowsObserved === 0) waitForChat();
         }, 1e3);
       };
-      if (!installed) waitForChat();
+      if (!stopBridge && nativeStats.nativeRowsObserved === 0) waitForChat();
       return () => {
         if (!active) return;
         restoreGenerated(true);
@@ -628,6 +792,7 @@ var ClassicBingPlugin = (() => {
         restoreNative = void 0;
       };
     };
+    const installMessageMenu = (source) => installClassicMessageMenu(api, { React, getCurrentChannel, getLoadedMessages, observe }, source, menuStats);
     return {
       React,
       RN,
@@ -637,9 +802,10 @@ var ClassicBingPlugin = (() => {
       getLoadedMessages,
       observe,
       installMessageRenderer,
+      installMessageMenu,
       installNativeTranslations,
       diagnostics: () => ({
-        pluginVersion: "0.1.2",
+        pluginVersion: "0.1.3",
         classicApi: "vendetta + bunny.api.react.jsx",
         currentChannelAvailable: !!getCurrentChannel(),
         loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,
@@ -651,6 +817,10 @@ var ClassicBingPlugin = (() => {
         rendererExplanation: stats.observedMessageRenders > 0 ? "Validated message JSX observed; phone display still requires verification." : nativeStats.nativeRowsObserved > 0 ? "Native message rows observed; generated content was processed, but actual phone display is not verified." : "No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.",
         nativeContentDelivery: "generated-message-property",
         nativeDisplayVerified: false,
+        nativeGenerateCalls,
+        nativeGenerateRejected: { ...generateRejected },
+        nativeLastGenerateShape: lastGenerateShape ? { ...lastGenerateShape } : null,
+        ...menuStats,
         ...stats,
         ...nativeStats,
         registeredNames: [...stats.registeredNames],
@@ -1332,6 +1502,20 @@ var ClassicBingPlugin = (() => {
       this.emit();
       if (this.settings.autoTranslate) this.scan();
     }
+    async translateMessage(message) {
+      if (this.disposed) return;
+      this.channelChanged();
+      if (message.channelId !== this.current) return;
+      const latest = this.options.getLoadedMessages(message.channelId).find((m) => m.id === message.id && m.channelId === message.channelId);
+      if (!latest) return;
+      const epoch = this.epoch;
+      await this.schedule(latest, true, true);
+      if (this.disposed || this.epoch !== epoch || this.current !== latest.channelId || !this.options.getLoadedMessages(latest.channelId).some((m) => m.id === latest.id && m.content === latest.content)) return;
+      const shown = this.getTranslation(latest);
+      if (shown) return shown;
+      const cached = this.cache.get(this.contentKey(latest.content));
+      if (cached && Date.now() - cached.time < 864e5) return cached.result;
+    }
     enableAuto() {
       this.suppressed.clear();
       this.configure({ autoTranslate: true });
@@ -1614,6 +1798,7 @@ var ClassicBingPlugin = (() => {
       runtime = { host, service, components, cleanup };
       try {
         cleanup.push(host.installMessageRenderer(components.wrapMessage));
+        cleanup.push(host.installMessageMenu(service));
         if (host.installNativeTranslations) cleanup.push(host.installNativeTranslations(service));
         cleanup.push(host.observe((event) => {
           if (event.type === "delete" && event.messageId) service.deleted(event.channelId ?? host.getCurrentChannel() ?? "", event.messageId);

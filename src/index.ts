@@ -22,6 +22,7 @@ export default {
   const cleanup:Array<()=>void>=[];runtime={host,service,components,cleanup};
   try{
    cleanup.push(host.installMessageRenderer(components.wrapMessage));
+   cleanup.push(host.installMessageMenu(service));
    if(host.installNativeTranslations)cleanup.push(host.installNativeTranslations(service));
    cleanup.push(host.observe(event=>{if(event.type==='delete'&&event.messageId)service.deleted(event.channelId??host.getCurrentChannel()??'',event.messageId);service.scan();}));
    service.scan();

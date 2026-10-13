@@ -1,3 +1,4 @@
+import {installClassicMessageMenu,type MenuSource} from './message-menu';
 export type MessageRef={id:string;channelId:string;content:string};
 export interface ClassicHost {
   React:any;RN:any;storage:Record<string,any>;
@@ -6,6 +7,7 @@ export interface ClassicHost {
   getLoadedMessages(channelId:string):MessageRef[];
   observe(callback:(event:{type:'messages'|'channel'|'delete';channelId?:string;messageId?:string})=>void):()=>void;
   installMessageRenderer(render:(original:any,message:MessageRef)=>any):()=>void;
+  installMessageMenu(source:MenuSource):()=>void;
   installNativeTranslations?(source:{getTranslation(message:MessageRef):{text:string}|undefined;consider(message:MessageRef):void;subscribe(cb:()=>void):()=>void;getSettings():{targetLanguage:string}}):()=>void;
   diagnostics():{[key:string]:unknown};
 }
@@ -25,6 +27,8 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
   const React=common.React??globals.bunny?.metro?.common?.React;
   const RN=common.ReactNative??globals.bunny?.metro?.common?.ReactNative;
   const stats={observedMessageRenders:0,rejectedMessageProps:0,rendererErrors:0,registeredNames:[] as string[],observedComponent:null as string|null,activeRenderer:false};
+  const menuStats={messageMenuHookAvailable:false,messageMenuCalls:0,messageMenuObserved:0,messageMenuInjections:0,messageMenuRejected:0,messageMenuMissingComponents:0,messageMenuNoContainer:0,messageMenuInjectionErrors:0};
+  const generateRejected:Record<string,number>={};let lastGenerateShape:Record<string,unknown>|null=null,nativeGenerateCalls=0;
   const nativeStats={nativeHookAvailable:false,nativeRowsObserved:0,nativeRowsTranslated:0,nativeUnsupportedRows:0,nativeReplayCount:0,nativeOriginalsLimitReached:false,nativeActive:false,nativeContentNodeRows:0,nativeLocalRepaints:0,nativeRepaintUnavailable:false,nativeRepaintLimitReached:false,nativeRowManagerActive:false,nativeRowManagerHooks:0,nativeDiscoveryAttempts:0,nativeDiscoveryStatus:'waiting'};
   let restoreNative:(()=>void)|undefined;
   const snowflake=(value:any):value is string=>typeof value==='string'&&/^\d{15,22}$/.test(value);
@@ -325,19 +329,27 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
       if(typeof parent?.generate!=='function'||typeof after!=='function'||seen.has(parent)||seen.size>=10)return;
       try{
         const unpatch=after('generate',parent,(args:any[],row:any)=>{
-          if(!active||args?.[0]?.rowType!==1||!row?.message)return row;
+          if(!active)return row;
+          nativeGenerateCalls++;
+          lastGenerateShape={argumentCount:args?.length??0,inputHasMessage:!!args?.[0]?.message,inputContentKind:typeof args?.[0]?.message?.content,rowTypeIsMessage:args?.[0]?.rowType===1,resultKind:typeof row,resultHasMessage:!!row?.message,resultContentIsArray:Array.isArray(row?.message?.content)};
+          const reject=(reason:string)=>{generateRejected[reason]=(generateRejected[reason]??0)+1;return row;};
+          if(args?.[0]?.rowType!==1)return reject('rowKind');
+          if(!row?.message)return reject('rowShape');
           const message=ref(args[0].message),current=message&&stored(message);
-          if(!message||!current||message.channelId!==getCurrentChannel()||current.content!==message.content||row.message.id!==current.id)return row;
+          if(!message)return reject('sourceShape');
+          if(!current)return reject('storeRecord');
+          if(message.channelId!==getCurrentChannel()||current.content!==message.content)return reject('sourceMismatch');
+          if(row.message.id!==current.id)return reject('rowIdentity');
           const rowChannel=row.message.channelId??row.message.channel_id;
-          if(rowChannel!==undefined&&rowChannel!==current.channelId)return row;
+          if(rowChannel!==undefined&&rowChannel!==current.channelId)return reject('rowChannel');
           const nativeMessage=row.message;
           // Native list consumers can retain the row/message before generate returns.
           // Preserve those identities, but never modify a MessageStore record or its AST.
-          if(nativeMessage===args[0].message||nativeMessage===safely(()=>messageStore.getMessage(current.channelId,current.id))){nativeStats.nativeUnsupportedRows++;return row;}
+          if(nativeMessage===args[0].message||nativeMessage===safely(()=>messageStore.getMessage(current.channelId,current.id))){nativeStats.nativeUnsupportedRows++;return reject('sourceAlias');}
           const previous=generatedContent.get(nativeMessage);
           const content=previous&&nativeMessage.content===previous.replacement?previous.original:nativeMessage.content;
           if(!(typeof content==='string'&&content===current.content)&&!(Array.isArray(content)&&content.every(node=>typeof node==='string'||(node&&typeof node==='object'&&!Array.isArray(node)&&typeof node.type==='string')))){
-            nativeStats.nativeUnsupportedRows++;return row;
+            nativeStats.nativeUnsupportedRows++;return reject('contentShape');
           }
           nativeStats.nativeRowsObserved++;if(Array.isArray(content))nativeStats.nativeContentNodeRows++;
           tracked.set(current.id,current);while(tracked.size>500)tracked.delete(tracked.keys().next().value!);
@@ -390,14 +402,19 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
       else stop();
     };
     discover();
-    const retry=()=>{discover();scheduleRefresh();};
-    const stopObserve=observe(event=>{if(!installed||event.type==='channel')retry();});
-    const stopSource=source.subscribe(()=>{if(!installed)discover();scheduleRefresh();});
+    let discoveryPending=false;
+    const requestDiscovery=()=>{
+      if(!active||discoveryPending||stopBridge)return;discoveryPending=true;
+      Promise.resolve().then(()=>{discoveryPending=false;if(active)discover();}).catch(()=>log.warn('Classic deferred message discovery failed'));
+    };
+    const retry=()=>{requestDiscovery();scheduleRefresh();};
+    const stopObserve=observe(event=>{if(!installed||nativeStats.nativeRowsObserved===0||event.type==='channel')retry();});
+    const stopSource=source.subscribe(()=>{if(!installed||nativeStats.nativeRowsObserved===0)requestDiscovery();scheduleRefresh();});
     // Retry briefly across lazy startup; future channel/message events keep
     // discovery possible without continuously scanning Metro after startup.
     let retryTimer:ReturnType<typeof setTimeout>|undefined;
-    const waitForChat=()=>{retryTimer=setTimeout(()=>{retryTimer=undefined;if(!active||installed||++attempts>=15)return;retry();if(!installed)waitForChat();},1000);};
-    if(!installed)waitForChat();
+    const waitForChat=()=>{retryTimer=setTimeout(()=>{retryTimer=undefined;if(!active||stopBridge||nativeStats.nativeRowsObserved>0||++attempts>=15)return;retry();if(nativeStats.nativeRowsObserved===0)waitForChat();},1000);};
+    if(!stopBridge&&nativeStats.nativeRowsObserved===0)waitForChat();
     return ()=>{
       if(!active)return;
       restoreGenerated(true);refreshRows(true);active=false;
@@ -407,9 +424,10 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
       tracked.clear();painted.clear();generatedContent.clear();nativeStats.nativeRowManagerActive=false;nativeStats.nativeRowManagerHooks=0;nativeStats.nativeActive=false;nativeStats.nativeDiscoveryStatus='stopped';restoreNative=undefined;
     };
   };
-  return {React,RN,storage:storage??{},logger:log,getCurrentChannel,getLoadedMessages,observe,installMessageRenderer,installNativeTranslations,
+  const installMessageMenu=(source:MenuSource)=>installClassicMessageMenu(api,{React,getCurrentChannel,getLoadedMessages,observe},source,menuStats);
+  return {React,RN,storage:storage??{},logger:log,getCurrentChannel,getLoadedMessages,observe,installMessageRenderer,installMessageMenu,installNativeTranslations,
     diagnostics:()=>({
-      pluginVersion:'0.1.2',classicApi:'vendetta + bunny.api.react.jsx',
+      pluginVersion:'0.1.3',classicApi:'vendetta + bunny.api.react.jsx',
       currentChannelAvailable:!!getCurrentChannel(),loadedMessageCount:getCurrentChannel()?getLoadedMessages(getCurrentChannel()!).length:0,
       messageStore:typeof messageStore?.getMessages==='function'&&typeof messageStore?.getMessage==='function',
       selectedChannelStore:typeof channelStore?.getChannelId==='function',
@@ -418,6 +436,7 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
       rendererStatus:stats.observedMessageRenders>0?'observed':nativeStats.nativeRowsObserved>0?'native-observed':stats.activeRenderer?'unobserved':'unsupported',
       rendererExplanation:stats.observedMessageRenders>0?'Validated message JSX observed; phone display still requires verification.':nativeStats.nativeRowsObserved>0?'Native message rows observed; generated content was processed, but actual phone display is not verified.':'No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.',
       nativeContentDelivery:'generated-message-property',nativeDisplayVerified:false,
+      nativeGenerateCalls,nativeGenerateRejected:{...generateRejected},nativeLastGenerateShape:lastGenerateShape?{...lastGenerateShape}:null,...menuStats,
       ...stats,...nativeStats,registeredNames:[...stats.registeredNames],
       nativeChatBridge:nativeStats.nativeHookAvailable||typeof RN?.NativeModules?.DCDChatManager?.updateRows==='function',
       nativeSchema:'Classic RowManager.generate(data) or DCDChatManager.updateRows(tag, JSON rows, flag); verified record identity and copied native content; phone verification pending.',

@@ -106,6 +106,15 @@ export class TranslationService{
   if(providerChange){this.cancel();this.records.clear();this.cache.clear();this.failed.clear();this.suppressed.clear();this.makeProvider();}
   if(!this.settings.autoTranslate&&previous.autoTranslate)this.cancel();this.emit();if(this.settings.autoTranslate)this.scan();
  }
+ async translateMessage(message:MessageRef):Promise<TranslationResult|undefined>{
+  if(this.disposed)return;this.channelChanged();
+  if(message.channelId!==this.current)return;
+  const latest=this.options.getLoadedMessages(message.channelId).find(m=>m.id===message.id&&m.channelId===message.channelId);if(!latest)return;
+  const epoch=this.epoch;await this.schedule(latest,true,true);
+  if(this.disposed||this.epoch!==epoch||this.current!==latest.channelId||!this.options.getLoadedMessages(latest.channelId).some(m=>m.id===latest.id&&m.content===latest.content))return;
+  const shown=this.getTranslation(latest);if(shown)return shown;
+  const cached=this.cache.get(this.contentKey(latest.content));if(cached&&Date.now()-cached.time<86400000)return cached.result;
+ }
  enableAuto():void{this.suppressed.clear();this.configure({autoTranslate:true});}
  stop():void{this.settings.autoTranslate=false;this.persist();this.cancel();this.emit();}
  clear():void{for(const [key,message]of this.seen)this.suppressed.add(JSON.stringify([key,this.settings.targetLanguage,message.content]));this.cancel();this.records.clear();this.cache.clear();this.failed.clear();this.lastError=null;this.emit();}

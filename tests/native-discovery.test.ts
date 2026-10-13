@@ -98,3 +98,33 @@ test('Classic cached finder misses do not hide an initialized late RowManager',a
   assert.equal(f.render().message.content.at(-1),'你好','read initialized Metro exports even when Classic has cached NOT_FOUND');
  }finally{f.stop();}
 });
+test('an unused early RowManager must not prevent finding the active message module loaded later',async()=>{
+ const f=fixture();f.stop();
+ const Dormant=class RowManager{generate(){return {type:0};}};
+ f.api.metro.modules['71'].publicModule.exports.default=Dormant as any;
+ f.api.metro.findByName=()=>Dormant as any;f.api.metro.findByNameAll=()=>[Dormant] as any;
+ const host=createClassicHost(f.api,{}, {log(){},warn(){},error(){}});const stop=host.installNativeTranslations!(f.source);
+ try{
+  assert.equal(host.diagnostics().nativeRowManagerHooks,1);
+  (f.api.metro.modules as any)['72']={isInitialized:true,publicModule:{exports:{default:f.RowManager}}};
+  f.api.metro.common.FluxDispatcher.dispatch({type:'MESSAGE_CREATE',message:f.record});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.render().message.content.at(-1),'你好','continue discovering when installed hook has observed no valid message rows');
+  assert.equal(host.diagnostics().nativeRowManagerHooks,2);
+ }finally{stop();}
+});
+test('RowManager diagnostics distinguish generate calls from rejected message signatures without collecting content',()=>{
+ const f=fixture();try{
+  new f.RowManager().generate({rowType:2,message:f.record});
+  assert.equal(f.host.diagnostics().nativeGenerateCalls,1);
+  assert.deepEqual(f.host.diagnostics().nativeGenerateRejected,{rowKind:1});
+  assert.equal(JSON.stringify(f.host.diagnostics()).includes('Hello'),false);
+ }finally{f.stop();}
+});
+test('unobserved native discovery coalesces bursts of service and store notifications',async()=>{
+ const f=fixture();try{
+  const before=Number(f.host.diagnostics().nativeDiscoveryAttempts);
+  for(let i=0;i<200;i++)f.listeners.forEach(cb=>cb());
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(Number(f.host.diagnostics().nativeDiscoveryAttempts)-before<=2,'a service emission burst must not scan Metro hundreds of times');
+ }finally{f.stop();}
+});
