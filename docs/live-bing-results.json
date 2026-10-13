@@ -1,0 +1,71 @@
+{
+  "checkedAt": "2026-10-13T06:19:45.144Z",
+  "transport": "Windows Node fetch with consistent Android browser User-Agent; not an Android device",
+  "provider": "undocumented Bing webpage, no API key",
+  "results": [
+    {
+      "expectedSource": "zh-Hans",
+      "target": "en",
+      "pass": true,
+      "detectedLanguage": "zh-Hans",
+      "translation": "Hello, welcome to the community.",
+      "milliseconds": 1959
+    },
+    {
+      "expectedSource": "en",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "en",
+      "translation": "你好，欢迎来到社区。",
+      "milliseconds": 1379
+    },
+    {
+      "expectedSource": "ja",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "ja",
+      "translation": "你好。欢迎来到社区。",
+      "milliseconds": 1408
+    },
+    {
+      "expectedSource": "ko",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "ko",
+      "translation": "你好。欢迎来到社区。",
+      "milliseconds": 942
+    },
+    {
+      "expectedSource": "de",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "de",
+      "translation": "你好，欢迎加入社区。",
+      "milliseconds": 1492
+    },
+    {
+      "expectedSource": "fr",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "fr",
+      "translation": "你好，欢迎加入社区。",
+      "milliseconds": 1131
+    },
+    {
+      "expectedSource": "ru",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "ru",
+      "translation": "您好，欢迎来到社区。",
+      "milliseconds": 1054
+    },
+    {
+      "expectedSource": "es",
+      "target": "zh-CN",
+      "pass": true,
+      "detectedLanguage": "es",
+      "translation": "你好，欢迎来到社区。",
+      "milliseconds": 1304
+    }
+  ]
+}

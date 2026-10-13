@@ -1,0 +1,17 @@
+import {build} from 'esbuild';
+import {mkdir,writeFile,readFile,copyFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+const result=await build({absWorkingDir:process.cwd(),entryPoints:['src/index.ts'],tsconfigRaw:{compilerOptions:{target:'ES2020'}},bundle:true,write:false,platform:'neutral',format:'iife',globalName:'ClassicBingPlugin',target:'es2020',minify:false,legalComments:'inline',logLevel:'warning'});
+const script='(function(){\n'+result.outputFiles[0].text+'\nreturn ClassicBingPlugin.default;\n})()\n';
+const hash=createHash('sha256').update(script).digest('hex');
+const packageInfo=JSON.parse(await readFile('package.json','utf8'));
+const manifest={name:'Bing Bilingual Translator',description:'Bing bilingual translation inside Revenge Classic; webpage provider experimental.',authors:[{name:'Local Android port'}],main:'index.js',version:packageInfo.version,hash,vendetta:{icon:'ic_application_command_24px'}};
+await mkdir('dist/bing-translator',{recursive:true});
+await writeFile('dist/bing-translator/index.js',script);
+await writeFile('dist/bing-translator/manifest.json',JSON.stringify(manifest,null,2)+'\n');
+await writeFile('dist/.nojekyll','');
+await copyFile('site/index.html','dist/index.html');
+await mkdir('bing-translator',{recursive:true});
+await copyFile('dist/bing-translator/index.js','bing-translator/index.js');
+await copyFile('dist/bing-translator/manifest.json','bing-translator/manifest.json');
+console.log('Built Classic expression bundle; SHA-256 '+hash);

@@ -1,0 +1,27 @@
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+const manifest=JSON.parse(await readFile('dist/bing-translator/manifest.json','utf8'));
+const script=await readFile('dist/bing-translator/index.js','utf8');
+assert.equal(manifest.main,'index.js');assert(Array.isArray(manifest.authors));assert.equal(manifest.hash,createHash('sha256').update(script).digest('hex'));
+for(const pattern of [/translate\.google/i,/translate_a\/single/,/BDFDB/,/document\./,/window\./,/\brequire\(/,/from\s+["']@(?:vendetta|bunny|revenge)/])assert(!pattern.test(script),'Forbidden desktop/Google/external dependency: '+pattern);
+const host={plugin:{storage:{},logger:console}};
+const lifecycle=vm.runInNewContext(`(vendetta=>{return ${script}\n})(host)`,{host,console,AbortController,setTimeout,clearTimeout,URL,URLSearchParams});
+assert.equal(typeof lifecycle.onLoad,'function');assert.equal(typeof lifecycle.onUnload,'function');assert.equal(typeof lifecycle.settings,'function');
+lifecycle.onUnload();assert.equal(lifecycle.settings(),null);
+console.log('PASS: manifest/hash, Classic loader-expression evaluation, lifecycle exports and no desktop/Google imports');
+// Execute built start/stop against a Classic-shaped host, including global bunny JSX.
+const callbacks=new Map(),events=new Map(),listeners=new Set();
+const channel='123456789012345678';
+const MessageStore={getMessages(){return [];},getMessage(){return undefined;},addChangeListener(fn){listeners.add(fn);},removeChangeListener(fn){listeners.delete(fn);}};
+const SelectedChannelStore={getChannelId(){return channel;},addChangeListener(fn){listeners.add(fn);},removeChangeListener(fn){listeners.delete(fn);}};
+const dispatcher={dispatch(){},subscribe(name,fn){events.set(name,fn);},unsubscribe(name,fn){if(events.get(name)===fn)events.delete(name);}};
+const React={createContext(){return {Provider:'Provider'};},createElement(type,props,...children){return {type,props:{...props,children}};}};
+const NativeModules={};
+const api={plugin:{storage:{settings:{autoTranslate:false}},logger:{log(){},warn(){},error(){}}},metro:{common:{React,ReactNative:{NativeModules}},findByStoreName(name){return name==='MessageStore'?MessageStore:name==='SelectedChannelStore'?SelectedChannelStore:undefined;},findByProps(...props){return props.includes('dispatch')?dispatcher:undefined;}}};
+const jsx={onJsxCreate(name,fn){callbacks.set(name,fn);},deleteJsxCreate(name,fn){if(callbacks.get(name)===fn)callbacks.delete(name);}};
+const built=vm.runInNewContext(`(vendetta=>{return ${script}\n})(host)`,{host:api,bunny:{api:{react:{jsx}}},console,AbortController,setTimeout,clearTimeout,URL,URLSearchParams,fetch});
+built.onLoad();assert(callbacks.size>0);assert(events.size>0);assert(listeners.size>0);assert(built.settings());
+built.onUnload();assert.equal(callbacks.size,0);assert.equal(events.size,0);assert.equal(listeners.size,0);assert.equal(built.settings(),null);
+built.onUnload();console.log('PASS: generated bundle executes Classic onLoad/settings/onUnload and releases JSX hooks/store/Flux subscriptions');

@@ -1,0 +1,15 @@
+{
+  "name": "Bing Bilingual Translator",
+  "description": "Bing bilingual translation inside Revenge Classic; webpage provider experimental.",
+  "authors": [
+    {
+      "name": "Local Android port"
+    }
+  ],
+  "main": "index.js",
+  "version": "0.1.0",
+  "hash": "4cf47910912a9a56087dd4308c6a15c0652fd76b8c5cc3b67e9051d79bf4bb8c",
+  "vendetta": {
+    "icon": "ic_application_command_24px"
+  }
+}
