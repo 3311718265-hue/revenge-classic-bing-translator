@@ -432,11 +432,23 @@ var ClassicBingPlugin = (() => {
       let stopBridge;
       const patches = [], seen = /* @__PURE__ */ new Set();
       const tracked = /* @__PURE__ */ new Map(), painted = /* @__PURE__ */ new Map();
+      const generatedContent = /* @__PURE__ */ new Map();
       const after = api?.patcher?.after ?? globals.bunny?.api?.patcher?.after;
       const before = api?.patcher?.before ?? globals.bunny?.api?.patcher?.before;
       const stored = (message) => ref(safely(() => messageStore?.getMessage?.(message.channelId, message.id)));
+      const restoreGenerated = (all = false) => {
+        for (const [nativeMessage, entry] of generatedContent) {
+          const current = stored(entry.message);
+          const translation = !all && current && current.content === entry.message.content && current.channelId === getCurrentChannel() && stats.observedMessageRenders === 0 ? safely(() => source.getTranslation(current)) : void 0;
+          const signature = translation?.text ? JSON.stringify([current.content, source.getSettings().targetLanguage, translation.text]) : "";
+          if (!all && signature === entry.signature && nativeMessage.content === entry.replacement) continue;
+          if (nativeMessage.content === entry.replacement) nativeMessage.content = entry.original;
+          generatedContent.delete(nativeMessage);
+        }
+      };
       const refreshRows = (restoreOnly = false) => {
         if (!active || !nativeStats.nativeRowManagerActive) return;
+        restoreGenerated(restoreOnly);
         const channel = getCurrentChannel();
         if (!channel) return;
         const messages = /* @__PURE__ */ new Map();
@@ -480,7 +492,13 @@ var ClassicBingPlugin = (() => {
             if (!message || !current || message.channelId !== getCurrentChannel() || current.content !== message.content || row.message.id !== current.id) return row;
             const rowChannel = row.message.channelId ?? row.message.channel_id;
             if (rowChannel !== void 0 && rowChannel !== current.channelId) return row;
-            const content = row.message.content;
+            const nativeMessage = row.message;
+            if (nativeMessage === args[0].message || nativeMessage === safely(() => messageStore.getMessage(current.channelId, current.id))) {
+              nativeStats.nativeUnsupportedRows++;
+              return row;
+            }
+            const previous = generatedContent.get(nativeMessage);
+            const content = previous && nativeMessage.content === previous.replacement ? previous.original : nativeMessage.content;
             if (!(typeof content === "string" && content === current.content) && !(Array.isArray(content) && content.every((node) => typeof node === "string" || node && typeof node === "object" && !Array.isArray(node) && typeof node.type === "string"))) {
               nativeStats.nativeUnsupportedRows++;
               return row;
@@ -492,13 +510,36 @@ var ClassicBingPlugin = (() => {
             Promise.resolve().then(() => {
               if (active && getCurrentChannel() === current.channelId) source.consider(current);
             }).catch(() => log.warn("Classic RowManager translation consideration failed"));
-            if (stats.observedMessageRenders > 0) return row;
+            if (stats.observedMessageRenders > 0) {
+              restoreGenerated(true);
+              return row;
+            }
             const translation = safely(() => source.getTranslation(current)), target = safely(() => source.getSettings().targetLanguage);
-            if (typeof translation?.text !== "string" || !translation.text.trim() || typeof target !== "string" || target.length > 40 || /[\r\n]/.test(target)) return row;
-            nativeStats.nativeRowsTranslated++;
-            painted.set(current.id, JSON.stringify([current.content, target, translation.text]));
+            if (typeof translation?.text !== "string" || !translation.text.trim() || typeof target !== "string" || target.length > 40 || /[\r\n]/.test(target)) {
+              if (previous && nativeMessage.content === previous.replacement) nativeMessage.content = previous.original;
+              generatedContent.delete(nativeMessage);
+              return row;
+            }
+            if (!generatedContent.has(nativeMessage) && generatedContent.size >= 500) {
+              nativeStats.nativeOriginalsLimitReached = true;
+              return row;
+            }
+            const signature = JSON.stringify([current.content, target, translation.text]);
             const next = Array.isArray(content) ? [...content, "\n", { type: "subtext", content: ["\u8BD1\u6587 \xB7 " + target] }, "\n", translation.text] : content + "\n\n[\u8BD1\u6587 \xB7 " + target + "]\n" + translation.text;
-            return { ...row, message: { ...row.message, content: next } };
+            try {
+              nativeMessage.content = next;
+            } catch {
+              nativeStats.nativeUnsupportedRows++;
+              return row;
+            }
+            if (nativeMessage.content !== next) {
+              nativeStats.nativeUnsupportedRows++;
+              return row;
+            }
+            generatedContent.set(nativeMessage, { message: current, original: content, replacement: next, signature });
+            nativeStats.nativeRowsTranslated++;
+            painted.set(current.id, signature);
+            return row;
           });
           seen.add(parent);
           patches.push(unpatch);
@@ -565,6 +606,7 @@ var ClassicBingPlugin = (() => {
       if (!installed) waitForChat();
       return () => {
         if (!active) return;
+        restoreGenerated(true);
         refreshRows(true);
         active = false;
         if (retryTimer !== void 0) clearTimeout(retryTimer);
@@ -578,6 +620,7 @@ var ClassicBingPlugin = (() => {
         }
         tracked.clear();
         painted.clear();
+        generatedContent.clear();
         nativeStats.nativeRowManagerActive = false;
         nativeStats.nativeRowManagerHooks = 0;
         nativeStats.nativeActive = false;
@@ -596,7 +639,7 @@ var ClassicBingPlugin = (() => {
       installMessageRenderer,
       installNativeTranslations,
       diagnostics: () => ({
-        pluginVersion: "0.1.1",
+        pluginVersion: "0.1.2",
         classicApi: "vendetta + bunny.api.react.jsx",
         currentChannelAvailable: !!getCurrentChannel(),
         loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,
@@ -605,7 +648,9 @@ var ClassicBingPlugin = (() => {
         fluxDispatcher: typeof dispatcher?.subscribe === "function" && typeof dispatcher?.unsubscribe === "function",
         jsxHookApi: typeof jsx?.onJsxCreate === "function" && typeof jsx?.deleteJsxCreate === "function",
         rendererStatus: stats.observedMessageRenders > 0 ? "observed" : nativeStats.nativeRowsObserved > 0 ? "native-observed" : stats.activeRenderer ? "unobserved" : "unsupported",
-        rendererExplanation: stats.observedMessageRenders > 0 ? "Validated message JSX observed; phone layout still requires verification." : nativeStats.nativeRowsObserved > 0 ? "Validated native message rows observed; bilingual native content is active." : "No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.",
+        rendererExplanation: stats.observedMessageRenders > 0 ? "Validated message JSX observed; phone display still requires verification." : nativeStats.nativeRowsObserved > 0 ? "Native message rows observed; generated content was processed, but actual phone display is not verified." : "No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.",
+        nativeContentDelivery: "generated-message-property",
+        nativeDisplayVerified: false,
         ...stats,
         ...nativeStats,
         registeredNames: [...stats.registeredNames],
@@ -1490,7 +1535,7 @@ var ClassicBingPlugin = (() => {
             button("stop-translation", "\u505C\u6B62\u7FFB\u8BD1", () => service.stop()),
             button("clear-translations", "\u6E05\u9664\u8BD1\u6587", () => service.clear())
           ),
-          h(RN.Text, { style: styles.text, accessibilityLiveRegion: "polite" }, `${status.active ? "\u8FD0\u884C\u4E2D" : settings.autoTranslate ? "\u81EA\u52A8\u7FFB\u8BD1\u5F85\u547D" : "\u5DF2\u505C\u6B62"} \xB7 \u7B49\u5F85 ${status.pending} \xB7 \u5DF2\u7FFB\u8BD1 ${status.translated}`),
+          h(RN.Text, { style: styles.text, accessibilityLiveRegion: "polite" }, `${status.active ? "\u8FD0\u884C\u4E2D" : settings.autoTranslate ? "\u81EA\u52A8\u7FFB\u8BD1\u5F85\u547D" : "\u5DF2\u505C\u6B62"} \xB7 \u7B49\u5F85 ${status.pending} \xB7 \u5DF2\u53D6\u5F97\u8BD1\u6587 ${status.translated}`),
           status.lastError || localError ? h(RN.Text, { style: { color: colors.error, fontSize: 13, marginTop: 8 }, accessibilityLiveRegion: "polite" }, redact(status.lastError || localError)) : null
         ),
         h(

@@ -282,11 +282,24 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
     let stopBridge:(()=>void)|undefined;
     const patches:Array<()=>void>=[],seen=new Set<any>();
     const tracked=new Map<string,MessageRef>(),painted=new Map<string,string>();
+    const generatedContent=new Map<any,{message:MessageRef;original:any;replacement:any;signature:string}>();
     const after=api?.patcher?.after??globals.bunny?.api?.patcher?.after;
     const before=api?.patcher?.before??globals.bunny?.api?.patcher?.before;
     const stored=(message:MessageRef)=>ref(safely(()=>messageStore?.getMessage?.(message.channelId,message.id)));
+    const restoreGenerated=(all=false)=>{
+      for(const [nativeMessage,entry]of generatedContent){
+        const current=stored(entry.message);
+        const translation=!all&&current&&current.content===entry.message.content&&current.channelId===getCurrentChannel()&&stats.observedMessageRenders===0?safely(()=>source.getTranslation(current)):undefined;
+        const signature=translation?.text?JSON.stringify([current!.content,source.getSettings().targetLanguage,translation.text]):'';
+        if(!all&&signature===entry.signature&&nativeMessage.content===entry.replacement)continue;
+        // Restore only the property we wrote, and leave subsequent plugin edits alone.
+        if(nativeMessage.content===entry.replacement)nativeMessage.content=entry.original;
+        generatedContent.delete(nativeMessage);
+      }
+    };
     const refreshRows=(restoreOnly=false)=>{
       if(!active||!nativeStats.nativeRowManagerActive)return;
+      restoreGenerated(restoreOnly);
       const channel=getCurrentChannel();if(!channel)return;
       const messages=new Map<string,MessageRef>();
       for(const message of [...tracked.values(),...getLoadedMessages(channel)])if(message.channelId===channel)messages.set(message.id,message);
@@ -317,20 +330,32 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
           if(!message||!current||message.channelId!==getCurrentChannel()||current.content!==message.content||row.message.id!==current.id)return row;
           const rowChannel=row.message.channelId??row.message.channel_id;
           if(rowChannel!==undefined&&rowChannel!==current.channelId)return row;
-          const content=row.message.content;
+          const nativeMessage=row.message;
+          // Native list consumers can retain the row/message before generate returns.
+          // Preserve those identities, but never modify a MessageStore record or its AST.
+          if(nativeMessage===args[0].message||nativeMessage===safely(()=>messageStore.getMessage(current.channelId,current.id))){nativeStats.nativeUnsupportedRows++;return row;}
+          const previous=generatedContent.get(nativeMessage);
+          const content=previous&&nativeMessage.content===previous.replacement?previous.original:nativeMessage.content;
           if(!(typeof content==='string'&&content===current.content)&&!(Array.isArray(content)&&content.every(node=>typeof node==='string'||(node&&typeof node==='object'&&!Array.isArray(node)&&typeof node.type==='string')))){
             nativeStats.nativeUnsupportedRows++;return row;
           }
           nativeStats.nativeRowsObserved++;if(Array.isArray(content))nativeStats.nativeContentNodeRows++;
           tracked.set(current.id,current);while(tracked.size>500)tracked.delete(tracked.keys().next().value!);
           Promise.resolve().then(()=>{if(active&&getCurrentChannel()===current.channelId)source.consider(current);}).catch(()=>log.warn('Classic RowManager translation consideration failed'));
-          if(stats.observedMessageRenders>0)return row;
+          if(stats.observedMessageRenders>0){restoreGenerated(true);return row;}
           const translation=safely(()=>source.getTranslation(current)),target=safely(()=>source.getSettings().targetLanguage);
-          if(typeof translation?.text!=='string'||!translation.text.trim()||typeof target!=='string'||target.length>40||/[\r\n]/.test(target))return row;
-          nativeStats.nativeRowsTranslated++;
-          painted.set(current.id,JSON.stringify([current.content,target,translation.text]));
+          if(typeof translation?.text!=='string'||!translation.text.trim()||typeof target!=='string'||target.length>40||/[\r\n]/.test(target)){
+            if(previous&&nativeMessage.content===previous.replacement)nativeMessage.content=previous.original;
+            generatedContent.delete(nativeMessage);return row;
+          }
+          if(!generatedContent.has(nativeMessage)&&generatedContent.size>=500){nativeStats.nativeOriginalsLimitReached=true;return row;}
+          const signature=JSON.stringify([current.content,target,translation.text]);
           const next=Array.isArray(content)?[...content,'\n',{type:'subtext',content:['译文 · '+target]},'\n',translation.text]:content+'\n\n[译文 · '+target+']\n'+translation.text;
-          return {...row,message:{...row.message,content:next}};
+          try{nativeMessage.content=next;}catch{nativeStats.nativeUnsupportedRows++;return row;}
+          if(nativeMessage.content!==next){nativeStats.nativeUnsupportedRows++;return row;}
+          generatedContent.set(nativeMessage,{message:current,original:content,replacement:next,signature});
+          nativeStats.nativeRowsTranslated++;painted.set(current.id,signature);
+          return row;
         });
         seen.add(parent);patches.push(unpatch);nativeStats.nativeRowManagerHooks=seen.size;
         nativeStats.nativeRowManagerActive=true;nativeStats.nativeActive=true;nativeStats.nativeDiscoveryStatus='row-manager';installed=true;
@@ -375,23 +400,24 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
     if(!installed)waitForChat();
     return ()=>{
       if(!active)return;
-      refreshRows(true);active=false;
+      restoreGenerated(true);refreshRows(true);active=false;
       if(retryTimer!==undefined)clearTimeout(retryTimer);
       stopObserve();stopSource();stopBridge?.();
       for(const stop of patches.reverse())try{stop();}catch{log.warn('Classic RowManager cleanup failed');}
-      tracked.clear();painted.clear();nativeStats.nativeRowManagerActive=false;nativeStats.nativeRowManagerHooks=0;nativeStats.nativeActive=false;nativeStats.nativeDiscoveryStatus='stopped';restoreNative=undefined;
+      tracked.clear();painted.clear();generatedContent.clear();nativeStats.nativeRowManagerActive=false;nativeStats.nativeRowManagerHooks=0;nativeStats.nativeActive=false;nativeStats.nativeDiscoveryStatus='stopped';restoreNative=undefined;
     };
   };
   return {React,RN,storage:storage??{},logger:log,getCurrentChannel,getLoadedMessages,observe,installMessageRenderer,installNativeTranslations,
     diagnostics:()=>({
-      pluginVersion:'0.1.1',classicApi:'vendetta + bunny.api.react.jsx',
+      pluginVersion:'0.1.2',classicApi:'vendetta + bunny.api.react.jsx',
       currentChannelAvailable:!!getCurrentChannel(),loadedMessageCount:getCurrentChannel()?getLoadedMessages(getCurrentChannel()!).length:0,
       messageStore:typeof messageStore?.getMessages==='function'&&typeof messageStore?.getMessage==='function',
       selectedChannelStore:typeof channelStore?.getChannelId==='function',
       fluxDispatcher:typeof dispatcher?.subscribe==='function'&&typeof dispatcher?.unsubscribe==='function',
       jsxHookApi:typeof jsx?.onJsxCreate==='function'&&typeof jsx?.deleteJsxCreate==='function',
       rendererStatus:stats.observedMessageRenders>0?'observed':nativeStats.nativeRowsObserved>0?'native-observed':stats.activeRenderer?'unobserved':'unsupported',
-      rendererExplanation:stats.observedMessageRenders>0?'Validated message JSX observed; phone layout still requires verification.':nativeStats.nativeRowsObserved>0?'Validated native message rows observed; bilingual native content is active.':'No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.',
+      rendererExplanation:stats.observedMessageRenders>0?'Validated message JSX observed; phone display still requires verification.':nativeStats.nativeRowsObserved>0?'Native message rows observed; generated content was processed, but actual phone display is not verified.':'No validated message rows observed yet. Open a text channel, load messages, then return to diagnostics.',
+      nativeContentDelivery:'generated-message-property',nativeDisplayVerified:false,
       ...stats,...nativeStats,registeredNames:[...stats.registeredNames],
       nativeChatBridge:nativeStats.nativeHookAvailable||typeof RN?.NativeModules?.DCDChatManager?.updateRows==='function',
       nativeSchema:'Classic RowManager.generate(data) or DCDChatManager.updateRows(tag, JSON rows, flag); verified record identity and copied native content; phone verification pending.',

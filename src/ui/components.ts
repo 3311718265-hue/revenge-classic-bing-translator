@@ -146,7 +146,7 @@ export function createComponents(host: Host, service: Service): {
           button('translate-loaded', '翻译本频道已加载消息', translateLoaded),
           button('stop-translation', '停止翻译', () => service.stop()),
           button('clear-translations', '清除译文', () => service.clear())),
-        h(RN.Text, { style: styles.text, accessibilityLiveRegion: 'polite' }, `${status.active ? '运行中' : settings.autoTranslate ? '自动翻译待命' : '已停止'} · 等待 ${status.pending} · 已翻译 ${status.translated}`),
+        h(RN.Text, { style: styles.text, accessibilityLiveRegion: 'polite' }, `${status.active ? '运行中' : settings.autoTranslate ? '自动翻译待命' : '已停止'} · 等待 ${status.pending} · 已取得译文 ${status.translated}`),
         status.lastError || localError ? h(RN.Text, { style: { color: colors.error, fontSize: 13, marginTop: 8 }, accessibilityLiveRegion: 'polite' }, redact(status.lastError || localError)) : null),
       h(RN.View, { style: styles.card },
         h(RN.Text, { style: styles.title }, `目标语言：${settings.targetLanguage}`),

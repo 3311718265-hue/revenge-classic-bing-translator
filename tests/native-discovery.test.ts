@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {createClassicHost} from '../src/runtime/classic';
 import {TranslationService} from '../src/core/service';
 const CHANNEL='100000000000000001',ID='200000000000000001';
-function fixture(late=false,cachedMiss=false){
+function fixture(late=false,cachedMiss=false,retain=false,reuse=false,alias=false){
  const record={id:ID,channel_id:CHANNEL,content:'Hello'};
  const nodes:any[]=['Hello',{type:'strong',content:['world']}];
  let ready=!late,translation:string|undefined='你好',selected=CHANNEL;
  const listeners=new Set<()=>void>(),events:any[]=[],considered:any[]=[];
- class RowManager{generate(data:any){return {type:data.rowType,message:{id:data.message.id,channelId:data.message.channel_id,content:nodes}};}}
+ const retained:any[]=[];
+ let cached:any;
+ class RowManager{generate(data:any){const row=reuse&&cached?cached:{type:data.rowType,message:alias?data.message:{id:data.message.id,channelId:data.message.channel_id,content:nodes}};cached=row;if(retain)retained.push(row);return row;}}
  const original=RowManager.prototype.generate;
  const messageStore={getMessages:()=>({_array:[record]}),getMessage:(c:string,id:string)=>c===CHANNEL&&id===ID?record:undefined};
  const callbacks=new Map<string,Set<(e:any)=>void>>();
@@ -17,7 +19,7 @@ function fixture(late=false,cachedMiss=false){
  const source={getTranslation:()=>translation?{text:translation}:undefined,consider:(m:any)=>considered.push(m),subscribe:(cb:()=>void)=>{listeners.add(cb);return()=>listeners.delete(cb);},getSettings:()=>({targetLanguage:'zh-CN'})};
  const host=createClassicHost(api,{}, {log(){},warn(){},error(){}});
  const stop=host.installNativeTranslations!(source);
- return {host,stop,record,nodes,original,RowManager,listeners,events,considered,source,api,
+ return {host,stop,record,nodes,original,RowManager,listeners,events,considered,source,api,retained,
   render:()=>new RowManager().generate({rowType:1,message:record}),
   ready(){ready=true;api.metro.modules['71'].isInitialized=true;dispatcher.dispatch({type:'CHANNEL_SELECT',channelId:CHANNEL});listeners.forEach(cb=>cb());},
   translate(v:string|undefined){translation=v;listeners.forEach(cb=>cb());},select(v:string){selected=v;}};
@@ -31,6 +33,38 @@ test('Android row generation appends bilingual content when DCDChatManager is un
   f.select('100000000000000002');f.translate('again');assert.deepEqual(f.render().message.content,f.nodes);
  }finally{f.stop();}
  assert.equal(f.RowManager.prototype.generate,f.original);assert.equal(f.listeners.size,0);
+});
+test('the native consumer sees translations when it retains generated rows before after hooks return',async()=>{
+ const f=fixture(false,false,true);try{
+  Object.freeze(f.nodes);Object.freeze(f.nodes[1]);
+  const row=f.render(),nativeRow=f.retained.at(-1);
+  assert.equal(nativeRow,row,'the same generated row must reach the native consumer');
+  assert.equal(nativeRow.message.content.at(-1),'你好','translation counters must not hide an untranslated retained row');
+  assert.equal(f.record.content,'Hello');assert.deepEqual(f.nodes,['Hello',{type:'strong',content:['world']}]);
+  f.translate(undefined);await Promise.resolve();
+  assert.deepEqual(nativeRow.message.content,f.nodes,'clear must restore any row retained by the native consumer');
+ }finally{f.stop();}
+});
+test('unload restores retained native content without overwriting another plugin content',()=>{
+ const f=fixture(false,false,true);try{
+  f.render();f.render();const first=f.retained[0],second=f.retained[1];
+  assert.equal(first.message.content.at(-1),'你好');
+  const other=['another plugin'];second.message.content=other;
+  f.stop();assert.deepEqual(first.message.content,f.nodes);assert.equal(second.message.content,other);
+ }finally{f.stop();}
+});
+test('reused native rows do not accumulate translations and clear restores the original parse tree',async()=>{
+ const f=fixture(false,false,true,true);try{
+  const row=f.render();assert.equal(f.render(),row);assert.equal(row.message.content.filter((x:any)=>x==='你好').length,1);
+  f.translate('您好');await Promise.resolve();f.render();assert.equal(row.message.content.at(-1),'您好');assert.equal(row.message.content.includes('你好'),false);
+  f.translate(undefined);await Promise.resolve();assert.equal(row.message.content,f.nodes);
+ }finally{f.stop();}
+});
+test('a generated message aliasing a MessageStore record is rejected without modifying source',()=>{
+ const f=fixture(false,false,true,false,true);try{
+  const row=f.render();assert.equal(row.message,f.record);assert.equal(row.message.content,'Hello');
+  assert.equal(f.host.diagnostics().nativeRowsTranslated,0);
+ }finally{f.stop();}
 });
 test('a late Android RowManager is discovered after chat opens and unload restores original rows',async()=>{
  const f=fixture(true);try{

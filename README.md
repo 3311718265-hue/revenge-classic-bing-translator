@@ -1,13 +1,13 @@
 <div align="center">
 
 <h1>Bing Bilingual Translator</h1>
-<h3>在 Discord 原文下方，直接阅读译文</h3>
+<h3>为 Discord 安卓消息提供双语显示</h3>
 <p>Revenge Classic 安卓插件 · 自动翻译新消息与已加载历史 · 自由选择目标语言</p>
 
 <p>
-  <a href="https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/manifest.json"><img src="https://img.shields.io/badge/version-0.1.1-5865F2?style=flat" alt="版本 0.1.1"></a>
+  <a href="https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/manifest.json"><img src="https://img.shields.io/badge/version-0.1.2-5865F2?style=flat" alt="版本 0.1.2"></a>
   <a href="#完整使用指南"><img src="https://img.shields.io/badge/Revenge-Classic-5865F2?style=flat" alt="Revenge Classic"></a>
-  <a href="#当前验证状态"><img src="https://img.shields.io/badge/Bing-experimental-b58115?style=flat" alt="Bing 网页接口为实验性接口"></a>
+  <a href="#兼容性与验证范围"><img src="https://img.shields.io/badge/Bing-experimental-b58115?style=flat" alt="Bing 网页接口为实验性接口"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2da44e?style=flat" alt="MIT License"></a>
 </p>
 
@@ -21,7 +21,7 @@
   <a href="#4-自动翻译新消息和历史消息">自动翻译</a> ·
   <a href="#5-每个按钮的作用">按钮说明</a> ·
   <a href="#9-能安装但不显示译文按顺序排查">常见问题</a> ·
-  <a href="#开发与实现说明">开发说明</a>
+  <a href="#运行环境与插件">运行环境</a>
 </p>
 
 <br>
@@ -37,7 +37,27 @@
 
 这是一个通过 **Source URL** 安装的 Discord 安卓翻译插件。翻译在 Discord 内完成，操作入口位于 Revenge Classic 的插件设置页面；无需 Root、悬浮窗或独立 APK。
 
-> 目标环境为 Android 16 / Discord 348.10 / Revenge Classic。Bing 网页接口为实验性接口；0.1.1 的构建和 65 项测试已通过，手机上的实际显示仍需验证。
+> 目标环境为 Android 16 / Discord 348.10 / Revenge Classic。当前为实验性版本，手机上的译文显示尚未完成实机验收。构建或安装成功不代表已完全适配。
+
+## 运行环境与插件
+
+本插件配合 [Revenge Manager](https://github.com/revenge-mod/revenge-manager) 安装的 Discord 修改版使用。三个部分的关系如下：
+
+| 部分 | 作用 | 在哪里操作 |
+| --- | --- | --- |
+| Revenge Manager | 安装和更新 Revenge 修改版 Discord | 手机上的 Manager 应用 |
+| Discord 中的 Revenge Classic | 加载插件，提供 Plugins、Source URL 和插件设置 | 修改版 Discord 的设置 |
+| Bing Bilingual Translator | 翻译当前频道消息，尝试在原文下方显示译文 | Classic 的插件设置 |
+
+**Source URL 要添加到 Discord 内的 Classic → Plugins，不是粘贴到 Revenge Manager 中。** Manager 是安装管理工具；翻译插件使用 Classic 的插件接口。
+
+已经能打开 Classic 的 Plugins 页面，可以直接看下面的安装步骤。尚未安装运行环境：
+
+1. 从 [Revenge Manager 官方 Releases](https://github.com/revenge-mod/revenge-manager/releases/latest) 获取 Manager APK，按 Android 提示安装。
+2. 打开 Manager，按其界面安装 Revenge 修改版 Discord，然后启动安装完成的 Discord。
+3. 在 Discord 设置中确认有 **Revenge Classic → Plugins → Source URL** 添加入口，再安装本插件。本指南只适用于 Classic；如果你的界面只有插件仓库或 ZIP 安装入口，需要先核对框架版本。
+
+Manager 和翻译插件各自更新。出现 **Revenge Update Failed** 时，按下面的故障说明处理框架更新。
 
 ## 快速入门
 
@@ -49,7 +69,7 @@
 https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/
 ```
 
-保留末尾 `/`。已安装的用户先更新插件并重启 Discord，在底部“本机诊断”确认 `pluginVersion` 为 `0.1.1`；不要重复安装两份。
+保留末尾 `/`。已安装的用户先更新插件并重启 Discord，在底部“本机诊断”确认 `pluginVersion` 为 `0.1.2`；不要重复安装两份。
 
 ### 开始翻译
 
@@ -66,9 +86,9 @@ Bing 模式无需 API Key。当前版本没有新增消息长按菜单里的翻�
 
 ## 完整使用指南
 
-适用插件：Bing Bilingual Translator 0.1.1。目标环境：Android 16、Discord 348.10、Revenge Classic。
+适用插件：Bing Bilingual Translator 0.1.2。目标环境：Android 16、Discord 348.10、Revenge Classic。
 
-本教程使用 Revenge Classic 的 Source URL 安装方式。无需 Root、悬浮窗或独立 APK。0.1.1 的构建和 65 项测试已通过；手机上的实际译文显示仍需要安装后确认。Bing 网页接口属于实验性接口，可能受网络、地区、风控和限流影响。
+本教程使用 Revenge Classic 的 Source URL 安装方式。无需 Root、悬浮窗或独立 APK。0.1.2 的构建和 69 项测试已通过；手机上的实际译文显示仍需要安装后确认。Bing 网页接口属于实验性接口，可能受网络、地区、风控和限流影响。
 
 ### 1. 已安装的用户：先更新
 
@@ -77,7 +97,7 @@ Bing 模式无需 API Key。当前版本没有新增消息长按菜单里的翻�
 1. 打开 Discord 设置中的 Revenge Classic → Plugins，找到 **Bing Bilingual Translator**。
 2. 如果插件菜单提供更新或刷新操作，执行更新；确认插件处于启用状态。不同 Classic 版本的按钮位置和文字可能不同。
 3. 完全关闭 Discord 并重新打开。仅关闭设置页不会重新加载插件代码。Classic 在允许插件自动更新时，会在启动时检查 Source URL。
-4. 打开此插件的设置，拉到底部“本机诊断”，查看 `pluginVersion`，应显示 **`0.1.1`**。
+4. 打开此插件的设置，拉到底部“本机诊断”，查看 `pluginVersion`，应显示 **`0.1.2`**。
 5. 如果仍显示 `0.1.0`，先确认手机能够打开下面的 manifest 链接；记录自己的目标语言等设置，再卸载这个插件、从原 Source URL 重新安装并重启 Discord。
 
 重新安装可能需要重新填写设置。不要为了更新而清除整个 Discord 应用的数据，也不要安装名称相同但来源不同的插件来替代。
@@ -107,6 +127,27 @@ https://raw.githubusercontent.com/3311718265-hue/revenge-classic-bing-translator
 ```
 
 这两个地址提供同一插件。切换安装地址前先卸载原来的那一份，避免两份插件同时翻译。备用地址只能解决安装文件访问问题，不能解决手机无法访问 Bing 的问题。
+
+### 2.1 安装报错或框架更新失败
+
+**报错：Plugin already installed**
+
+这个报错表示 Classic 仍保存了相同 Source URL 的安装记录。加载器会先检查记录，然后才开始下载，所以此报错不等于下载地址失效。
+
+1. 点 **Okay** 关闭提示，完全关闭并重新打开 Discord。
+2. 在 Plugins 清空搜索内容，再搜索 **Bing** 或 **Bilingual**。
+3. 找到插件后，打开它的菜单，选择 **Refetch（重新获取）**，启用插件并重启 Discord。无需再点加号安装相同地址。
+4. 如果确实要重新安装，使用插件菜单里的 **Delete（删除）** 并确认。**Clear Data（清除数据）** 只重置插件设置，**关闭开关** 只停用插件，都不等于删除安装记录。
+5. 若列表仍没有插件卡片，点击 **Unproxied Plugins Found** 右侧的 **ⓘ**，检查保留的 Source URL。记录提示和框架版本后反馈；不要为绕过报错换地址安装第二份，也不要清除整个 Discord 的应用数据。
+
+**报错：Revenge Update Failed / Request timeout**
+
+先看报错中的 URL。如果指向官方 `revenge-mod/revenge-bundle/releases/.../revenge.min.js`，失败的是 **Revenge 框架更新**，与本插件的 `bing-translator/` 下载地址属于不同请求。
+
+- 可以先点 **Dismiss** 关闭提示；已有缓存能否继续运行，以 Classic 设置和插件列表是否正常打开为准。
+- 检查手机访问 GitHub Releases 的网络，恢复后选择 **Retry Update**。浏览器能打开 GitHub 首页不代表发布文件下载也能成功。
+- 无需因此删除翻译插件、清除 Discord 数据或改装 Revenge Next。
+- 若没有可用缓存、Classic 设置也打不开，应先修复框架下载，再进行插件安装。
 
 ### 3. 第一次翻译：按这个顺序操作
 
@@ -172,13 +213,13 @@ Hello, welcome to the community.
 | Türkçe / Tiếng Việt / Bahasa Indonesia / ไทย | `tr` / `vi` / `id` / `th` |
 | Українська / Nederlands | `uk` / `nl` |
 
-状态栏示例：`运行中 · 等待 5 · 已翻译 12`。
+状态栏示例：`运行中 · 等待 5 · 已取得译文 12`。
 
 - **运行中**：队列正在执行任务。
 - **自动翻译待命**：自动开关已开启，当前没有正在执行的任务；它本身不能证明渲染适配成功。
 - **已停止**：自动开关关闭，当前没有运行中的任务。
 - **等待**：还未结束的消息任务数量，可能包含当前活动任务；相同文字可以共享一次请求。
-- **已翻译**：当前保留的译文记录数量，不一定等于屏幕上可见的消息行数。清除、语言切换和缓存上限会影响它。
+- **已取得译文**：当前保留的译文记录数量，不一定等于屏幕上可见的消息行数。清除、语言切换和缓存上限会影响它。
 
 不要只看“已启用”或计数判断成功：最终要返回频道，确认译文确实出现在对应原文下方。
 
@@ -222,9 +263,9 @@ Hello, welcome to the community.
 
 #### 第一步：确认版本和消息已加载
 
-先看 `pluginVersion` 是否为 `0.1.1`。再返回文字频道，等消息显示并稍微往上滚动，然后回到插件设置。
+先看 `pluginVersion` 是否为 `0.1.2`。再返回文字频道，等消息显示并稍微往上滚动，然后回到插件设置。
 
-旧版 0.1.0 曾出现 JSX 未观察到消息、原生桥找不到的情况。0.1.1 增加 `RowManager` 路径；不要继续拿 0.1.0 的诊断判断新版本效果。
+旧版 0.1.0 曾出现 JSX 未观察到消息、原生桥找不到的情况。0.1.2 增加 `RowManager` 路径；不要继续拿 0.1.0 的诊断判断新版本效果。
 
 #### 第二步：看本机诊断
 
@@ -232,7 +273,7 @@ Hello, welcome to the community.
 
 | 字段 | 如何理解 |
 | --- | --- |
-| `pluginVersion` | 当前实际执行的代码版本，应为 `0.1.1` |
+| `pluginVersion` | 当前实际执行的代码版本，应为 `0.1.2` |
 | `currentChannelAvailable` | 是否读到了当前文字频道；false 时先进入频道 |
 | `loadedMessageCount` | 读到的已加载消息数；0 时先加载消息，再检查是否报读取问题 |
 | `messageStore` / `selectedChannelStore` | 对应 Store 接口是否找到；true 不代表其中一定有消息 |
@@ -248,10 +289,10 @@ Hello, welcome to the community.
 
 | 现象 | 接下来检查什么 |
 | --- | --- |
-| 点击后等待 0、已翻译 0，并提示未取得频道 | 先进入文字频道加载消息，再回来操作 |
+| 点击后等待 0、已取得译文 0，并提示未取得频道 | 先进入文字频道加载消息，再回来操作 |
 | 提示没有可读取的已加载消息 | 看 `currentChannelAvailable`、`loadedMessageCount`，确认不是语音页或还没加载消息 |
-| 自动待命、已翻译 0，所有消息观察数也为 0 | 看版本、模块接入状态和完整诊断；不应直接归因于 Bing |
-| 已翻译有数值，但频道看不到译文 | 看原生/React 渲染观察数和译文生成数，可能仍有当前客户端渲染适配问题 |
+| 自动待命、已取得译文 0，所有消息观察数也为 0 | 看版本、模块接入状态和完整诊断；不应直接归因于 Bing |
+| 已取得译文有数值，但频道看不到译文 | 看原生/React 渲染观察数和译文生成数，可能仍有当前客户端渲染适配问题 |
 | 显示翻译超时或请求失败 | 先停止批量任务，用一条外语消息重试，检查手机网络能否访问 Bing |
 | 显示频率限制 | 等待冷却；不要连续切换语言或反复点击 |
 | 显示鉴权失败 | Bing 模式可能是网页会话/服务拒绝；官方模式则检查自己的 Key、区域及端点 |
@@ -303,95 +344,12 @@ Revenge Classic 版本：
 
 ---
 
-## 开发与实现说明
+## 兼容性与验证范围
 
-Android 16、Discord 348.10 为目标环境。使用 Revenge **Classic** 的 Source URL 插件格式；无需 Root、悬浮窗或独立 APK。
+**当前状态：实验性版本，尚未确认完整适配 Android 16 / Discord 348.10。**
 
-此项目实际包含可编辑源码、构建脚本、可执行测试，以及构建出的 `dist/bing-translator/manifest.json` / `index.js`。它是 Android 移植，不加载 BetterDiscord 或网页 DOM。
+0.1.2 保留原生生成行和消息对象的身份，仅为生成消息设置新的正文数组；0.1.1 曾出现计数增加但手机没有译文的反馈。0.1.2 的构建和 69 项自动测试通过；手机上的修复效果仍待确认。诊断中的已取得译文数、`nativeRowsObserved` 和 `nativeRowsTranslated` 是处理和渲染数据计数，重复渲染也可能累计，不能替代肉眼确认。
 
-## 0.1.1 安卓消息行修复
+正式使用前，请按上面的五项验收检查译文显示、历史滚动、频道切换、编辑消息、停止及清除。尚未通过这些检查时，不应把该手机标为兼容。
 
-新增 Classic `RowManager.generate` 渲染接入，不再依赖手机必须暴露 `DCDChatManager`。支持延迟加载的消息模块，并检查已初始化 Metro 导出以应对缓存未找到结果。原文和原始节点不变，翻译完成后请求本地消息行重绘；清除、编辑、频道切换和卸载都有相应保护。
-
-从已有 Source URL 更新插件并重启 Discord。先进入文字频道加载消息，再检查诊断：`pluginVersion` 应为 `0.1.1`，`nativeRowManagerActive` 或原生桥状态应为 true，消息观察数应随消息加载增加。0.1.1 已通过 65 项测试及构建，手机上的修复效果仍需用户验证。
-
-安装 Source URL（保留末尾斜杠）：
-
-```text
-https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/
-```
-
-## 当前验证状态
-
-- 翻译提供方、队列、消息状态及 React Native 组件有可运行测试；`npm run check` 执行 TypeScript 检查、测试、构建和 Classic 加载格式校验。
-- 已对 Bing 网页接口执行实际多语种请求，包括当前源码的 `createTranslator`。详情见 [Bing 证据](docs/bing-evidence.md)。这不代表长期稳定，也不证明手机网络环境相同。
-- 没有连接 Android 手机。Discord 348.10 上的渲染、历史滚动、应用切后台和卸载效果尚未实机验收。
-- Microsoft 官方 API 的 HTTP 合约已测试；未使用真实订阅密钥执行请求。
-- GitHub 仓库和 Pages 已发布；部署及本次更新状态以 Actions 结果和线上 manifest 版本为准。
-
-## 功能与操作
-
-默认使用免 Key 的 Bing 网页接口，自动检测原始语言，目标默认为简体中文。设置中可选择中文、英文、日文、韩文、德文、法文、俄文、西班牙文等语言。
-
-- **自动翻译**：翻译当前频道的新消息、已加载消息及滚动后新进入消息 Store 的历史消息。
-- **翻译当前频道已加载消息**：按消息 ID 的时间顺序处理整个本地集合。不请求额外 Discord 历史。
-- **停止翻译**：停用自动模式并取消队列及在途请求；已经显示的译文保留。
-- **清除译文**：取消工作，清除译文和缓存。已清除的旧内容不会立即被自动重新翻译；新消息仍可自动处理。点击“翻译当前频道”可重新翻译旧内容。
-- **语言/提供方切换**：取消旧任务，清除旧语言显示，按新配置处理；旧请求不能覆盖新结果。
-
-单个工作队列、精确文本去重、每个 HTTP 请求的频率限制、有限重试和内存缓存避免重复请求。初始间隔 1200 ms、单次 HTTP 超时 8000 ms；可在设置里调整。429 不会立即重试。相同原文、目标语言和提供方共享请求。代码、链接及 Discord 标记在提供方层受到保护。缓存有上限，卸载后释放，不保存聊天正文到插件磁盘设置。
-
-## Android 渲染适配
-
-首选独立 React Native 双语组件：保留原始 React 元素，译文作为下面的独立元素。组件绑定频道 ID、消息 ID 和原文修订，复用列表格不会沿用上一条的译文。
-
-Discord 也使用原生消息列表。适配器提供受格式保护的 `DCDChatManager.updateRows` 桥接路径，对与 MessageStore 消息身份对应的原生正文节点数组创建新数组，把译文追加在原有节点下方；兼容的普通字符串格式也有严格校验。不更改消息 Store、不修改共享正文节点，不发出或编辑 Discord 消息。原生路径不是独立 RN 译文组件。实际格式不符合校验时保持原样，设置中的诊断会显示缺失的渲染能力，避免损坏消息列表。Classic 内部 API 和私有渲染通道的证据/限制见 [运行时说明](docs/runtime-evidence.md)。
-
-仅看到“插件已启用”不等于成功显示译文。安装后检查“诊断”中的 `observedMessageRenders`、`nativeRowsObserved` 和 `nativeRowsTranslated`，再按下方实机步骤验收。这些计数表示代码观察到/生成了展示数据，仍需肉眼确认手机上实际显示。若没有观察到支持的渲染通道，当前构建需要该 Discord 构建的模块诊断才能继续适配；不要把不支持的格式当作普通字符串强行追加。
-
-## 可选 Microsoft Translator 官方 API
-
-默认不开启，也不需要 Key。网页接口不能满足需求时，可在插件设置中选择 **Microsoft Translator**，填写 Azure Translator 订阅 Key 和相应区域。也可在填写 Key 后明确开启“网页接口失败时使用官方服务”；未开启不会自动使用付费订阅。
-
-默认 Endpoint 为 `https://api.cognitive.microsofttranslator.com`。支持正确的 Microsoft Translator 资源 HTTPS Endpoint；发送订阅 Key 的地址受 Microsoft 域名校验约束。请求省略 `from` 以自动检测语言，中文目标映射为 `zh-Hans` / `zh-Hant`。
-
-密钥输入会遮罩。密钥保存在 Classic 插件的本地设置，不写入发布文件或日志；客户端内其他有权限的代码仍可读取插件设置，不能当作硬件密钥库。不要上传自己的设置文件。所选聊天正文会提交至 Bing/Microsoft 翻译服务，代码及受保护标记按实现跳过。
-
-## 构建与本地检查
-
-需要 Node.js 22 或更新版本：
-
-```sh
-npm ci --ignore-scripts
-npm run check
-npm run probe:bing
-```
-
-`probe:bing` 是有界限的真实网络测试，不包含私人聊天。若出现限流、鉴权失败或网络失败，命令会报告失败，不能改成固定“通过”。普通测试使用受控 HTTP 响应，覆盖超时、取消、429、会话失效、长文本和格式校验，不能替代真实网络测试。
-
-修改源码后重新构建。构建会更新 manifest 的 SHA-256 `hash`；Classic 用它判断是否需要下载更新的 `index.js`。
-
-## GitHub Pages 发布与 Source URL 安装
-
-1. 创建自己的 GitHub 仓库，把本目录的源码、`package-lock.json`、`site` 和 `.github/workflows/pages.yml` 提交到 `main`。不要上传 `node_modules`、测试临时目录或私人设置。
-2. 仓库 Settings → Pages → Source 选择 **GitHub Actions**。
-3. 运行“Build and deploy Revenge Classic plugin”工作流，检查构建及部署成功。
-4. 打开工作流输出的 Pages 首页，复制该页计算出的 **Source URL**。地址的最后一段是 `/bing-translator/`，而不是 `index.js`、仓库主页或 ZIP。
-5. 在手机 Revenge Classic → Settings → Plugins → 添加插件，粘贴 Source URL 并启用。切勿按 Revenge Next 的“插件仓库/ZIP”格式安装。
-
-`dist` 已可直接部署到兼容的 HTTPS 静态文件主机。应能公开访问 Source URL 下的 `manifest.json` 和 `index.js`，不要使用登录后才能访问的链接。`the local delivery directory` 本地路径不能直接填为手机 Source URL。
-
-## 手机验收
-
-1. 确认 Revenge Classic 版本及 Android/Discord 版本；从 HTTPS Source URL 安装。
-2. 进入含英、日、韩文的测试频道，确认原文还在，译文位于对应原文下方；诊断应记录实际渲染匹配。
-3. 打开自动模式，新消息到达和滚动加载旧消息应各翻译一次，不能串到列表复用后的其他消息。
-4. 改目标为日语，再改回中文；编辑或删除一条消息，检查旧译文不残留。
-5. 测试停止、清除、切换频道和卸载。清除/卸载要移除译文，原文及聊天操作保持正常。
-6. 若失败，记录 Classic 版本、诊断和现象。不要发送订阅 Key、Discord Token 或私人聊天全文。
-
-## 来源
-
-桌面参考：DevilBro 的 Translator 2.8.6，以及此聊天中修复的 Bing 会话、语言映射及重试逻辑。原插件为 [BetterDiscordAddons/Translator](https://github.com/mwittrien/BetterDiscordAddons/tree/master/Plugins/Translator)。Android 代码重写框架与渲染集成，仅携带 Bing/Microsoft 两种提供方。
-
-Classic 官方 API 基线：[revenge-mod/revenge-bundle v1.11.6](https://github.com/revenge-mod/revenge-bundle/tree/1b1d297416594087769987908e5fc09af36b7e6e)。此基线不是对 Discord 348.10 实机兼容性的声明。
+Bing 网页接口已经做过有界限的实际请求验证，但仍可能受地区、网络和限流影响，不保证长期稳定。Microsoft 官方 API 为可选配置；没有使用真实订阅密钥完成端到端验证。

@@ -1,6 +1,6 @@
 {
   "name": "revenge-classic-bing-translator",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Bilingual loaded-message translation for Revenge Classic",
