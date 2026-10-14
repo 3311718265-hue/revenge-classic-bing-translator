@@ -6,10 +6,15 @@ export function installClassicMessageMenu(api:any,host:{React:any;getCurrentChan
  const safe=(fn:()=>any)=>{try{return fn();}catch{return undefined;}};
  const find=(...keys:string[])=>{
   const modules=api?.metro?.modules??globals.modules;
+  // Discord language proxies return values for arbitrary missing properties.
+  // Match actual callable/React component exports, as well as excluding Classic's blacklist tag.
+  const matches=(value:any)=>!!value&&safe(()=>value[Symbol.toStringTag]!=='IntlMessagesProxy'&&keys.every(key=>{
+   const member=value[key];return typeof member==='function'||!!member&&typeof member==='object'&&['react.memo','react.forward_ref','react.lazy'].some(tag=>member.$$typeof===Symbol.for(tag));
+  }));
   if(modules&&typeof modules==='object')for(const entry of Object.values(modules) as any[]){
    if(!entry?.isInitialized||entry.hasError)continue;
-   for(const value of [safe(()=>entry.publicModule?.exports),safe(()=>entry.publicModule?.exports?.default)])if(value&&safe(()=>keys.every(key=>value[key]!==undefined)))return value;
-  }return safe(()=>api?.metro?.findByProps?.(...keys));
+   for(const value of [safe(()=>entry.publicModule?.exports),safe(()=>entry.publicModule?.exports?.default)])if(matches(value))return value;
+  }const found=safe(()=>api?.metro?.findByProps?.(...keys));return matches(found)?found:undefined;
  };
  const current=(message:MessageRef)=>host.getCurrentChannel()===message.channelId?host.getLoadedMessages(message.channelId).find(m=>m.id===message.id&&m.content===message.content):undefined;
  const messageFor=(props:any)=>{

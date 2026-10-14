@@ -1,6 +1,20 @@
-# 构建与验证记录
+# 构建和验证记录
 
-日期：2026-10-14（Asia/Hong_Kong）。版本：0.1.4。
+日期：2026-10-14（Asia/Hong_Kong），当前版本：0.1.5。
+
+## 0.1.5 真实安卓长按菜单组件识别修复
+
+USB 实机环境：Android 16 / app.revenge 348.10 / Revenge Classic 1b1d297-main。本机通过 ADB 和 Classic 自带 DevTools 调试；没有安装独立 APK、切换 Next 或使用网页 DOM。
+
+修复前，真实长按消息菜单存在复制按钮，却没有“翻译这条消息”。追踪确认入口是 showLongPressMessageActionSheet → openLazy → ActionSheet / ActionSheetRow.Group。组件名称与 Classic 一致。根因是已初始化 Metro 模块中的 IntlMessagesProxy：对任意不存在的属性返回对象，旧查找把它当作消息菜单组件。
+
+新增回归重现代理误匹配，在旧实现下失败；排除代理并检查可调用函数或 React 组件导出后通过。本地 npm run check 包含类型检查、83 项测试、ES2020 构建、manifest/hash、Classic 表达式加载与生命周期验证。
+
+将本次生产菜单 helper 和真实 TranslationService 临时加载到手机后，Android UI 树与截图均显示“翻译这条消息”；缺组件及注入错误计数为 0。仅对用户明确批准的一条公告执行 Bing 请求，状态 translated=1、lastError=null。普通正文原文下方中文由手机截图和 UI 树确认。自动译文显示来自手机已有完整插件，菜单修复来自临时调试驱动；这两个阶段不混称为发布后完整插件验收。发布后重新获取和重启需另行验证。
+
+实机发现普通正文可翻译，而嵌入卡片正文仍为英文。当前不支持 embed、图片或附件翻译。所有手机截图及诊断材料仅存本地 E 盘，不随公开源码上传；不收集登录凭据或 API Key。
+
+## 历史版本验证记录
 
 ## 0.1.4 Classic 延迟消息菜单模块接入
 

@@ -37,11 +37,16 @@ var ClassicBingPlugin = (() => {
     };
     const find = (...keys) => {
       const modules = api?.metro?.modules ?? globals.modules;
+      const matches = (value) => !!value && safe(() => value[Symbol.toStringTag] !== "IntlMessagesProxy" && keys.every((key) => {
+        const member = value[key];
+        return typeof member === "function" || !!member && typeof member === "object" && ["react.memo", "react.forward_ref", "react.lazy"].some((tag) => member.$$typeof === Symbol.for(tag));
+      }));
       if (modules && typeof modules === "object") for (const entry of Object.values(modules)) {
         if (!entry?.isInitialized || entry.hasError) continue;
-        for (const value of [safe(() => entry.publicModule?.exports), safe(() => entry.publicModule?.exports?.default)]) if (value && safe(() => keys.every((key) => value[key] !== void 0))) return value;
+        for (const value of [safe(() => entry.publicModule?.exports), safe(() => entry.publicModule?.exports?.default)]) if (matches(value)) return value;
       }
-      return safe(() => api?.metro?.findByProps?.(...keys));
+      const found = safe(() => api?.metro?.findByProps?.(...keys));
+      return matches(found) ? found : void 0;
     };
     const current = (message) => host.getCurrentChannel() === message.channelId ? host.getLoadedMessages(message.channelId).find((m) => m.id === message.id && m.content === message.content) : void 0;
     const messageFor = (props) => {
@@ -854,7 +859,7 @@ var ClassicBingPlugin = (() => {
       installMessageMenu,
       installNativeTranslations,
       diagnostics: () => ({
-        pluginVersion: "0.1.4",
+        pluginVersion: "0.1.5",
         classicApi: "vendetta + bunny.api.react.jsx",
         currentChannelAvailable: !!getCurrentChannel(),
         loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,
