@@ -5,7 +5,7 @@
 <p>Revenge Classic 安卓插件 · 自动翻译新消息与已加载历史 · 自由选择目标语言</p>
 
 <p>
-  <a href="https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/manifest.json"><img src="https://img.shields.io/badge/version-0.1.3-5865F2?style=flat" alt="版本 0.1.3"></a>
+  <a href="https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/manifest.json"><img src="https://img.shields.io/badge/version-0.1.4-5865F2?style=flat" alt="版本 0.1.4"></a>
   <a href="#完整使用指南"><img src="https://img.shields.io/badge/Revenge-Classic-5865F2?style=flat" alt="Revenge Classic"></a>
   <a href="#兼容性与验证范围"><img src="https://img.shields.io/badge/Bing-experimental-b58115?style=flat" alt="Bing 网页接口为实验性接口"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2da44e?style=flat" alt="MIT License"></a>
@@ -69,7 +69,7 @@ Manager 和翻译插件各自更新。出现 **Revenge Update Failed** 时，按
 https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/
 ```
 
-保留末尾 `/`。已安装的用户先更新插件并重启 Discord，在底部“本机诊断”确认 `pluginVersion` 为 `0.1.3`；不要重复安装两份。
+保留末尾 `/`。已安装的用户先更新插件并重启 Discord，在底部“本机诊断”确认 `pluginVersion` 为 `0.1.4`；不要重复安装两份。
 
 ### 开始翻译
 
@@ -78,7 +78,7 @@ https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator
 3. 开启 **自动翻译新消息**，点击一次 **翻译本频道已加载消息**。
 4. 返回频道，查看外语原文下方的译文。之后可正常聊天或滚动加载历史。
 
-Bing 模式无需 API Key。0.1.3 新增消息长按菜单的“翻译这条消息”：长按一条文字消息，点此项，取得结果后会在 Discord 内打开译文查看窗口。自动双语显示仍属于实验性适配。
+Bing 模式无需 API Key。消息长按菜单的“翻译这条消息”：长按一条文字消息，点此项，此入口接入成功并取得结果后会在 Discord 内打开译文查看窗口。0.1.3 手机反馈尚未接入菜单，0.1.4 修复延迟菜单模块订阅，仍需手机确认。自动双语显示仍属于实验性适配。
 
 > 安装成功但没有译文？查看下方[完整排查步骤](#9-能安装但不显示译文按顺序排查)，先确认版本、当前频道和已加载消息数。
 
@@ -86,9 +86,9 @@ Bing 模式无需 API Key。0.1.3 新增消息长按菜单的“翻译这条消�
 
 ## 完整使用指南
 
-适用插件：Bing Bilingual Translator 0.1.3。目标环境：Android 16、Discord 348.10、Revenge Classic。
+适用插件：Bing Bilingual Translator 0.1.4。目标环境：Android 16、Discord 348.10、Revenge Classic。
 
-本教程使用 Revenge Classic 的 Source URL 安装方式。无需 Root、悬浮窗或独立 APK。0.1.3 的构建和 78 项测试已通过；手机上的实际译文显示仍需要安装后确认。Bing 网页接口属于实验性接口，可能受网络、地区、风控和限流影响。
+本教程使用 Revenge Classic 的 Source URL 安装方式。无需 Root、悬浮窗或独立 APK。0.1.4 的构建和 82 项测试已通过；手机上的实际译文显示仍需要安装后确认。Bing 网页接口属于实验性接口，可能受网络、地区、风控和限流影响。
 
 ### 1. 已安装的用户：先更新
 
@@ -97,7 +97,7 @@ Bing 模式无需 API Key。0.1.3 新增消息长按菜单的“翻译这条消�
 1. 打开 Discord 设置中的 Revenge Classic → Plugins，找到 **Bing Bilingual Translator**。
 2. 如果插件菜单提供更新或刷新操作，执行更新；确认插件处于启用状态。不同 Classic 版本的按钮位置和文字可能不同。
 3. 完全关闭 Discord 并重新打开。仅关闭设置页不会重新加载插件代码。Classic 在允许插件自动更新时，会在启动时检查 Source URL。
-4. 打开此插件的设置，拉到底部“本机诊断”，查看 `pluginVersion`，应显示 **`0.1.3`**。
+4. 打开此插件的设置，拉到底部“本机诊断”，查看 `pluginVersion`，应显示 **`0.1.4`**。
 5. 如果仍显示 `0.1.0`，先确认手机能够打开下面的 manifest 链接；记录自己的目标语言等设置，再卸载这个插件、从原 Source URL 重新安装并重启 Discord。
 
 重新安装可能需要重新填写设置。不要为了更新而清除整个 Discord 应用的数据，也不要安装名称相同但来源不同的插件来替代。
@@ -169,7 +169,7 @@ Hello, welcome to the community.
 
 也可以**长按文字消息 → 翻译这条消息**，单独翻译这一条。菜单动作复用同一队列、缓存和频率限制；自动开关关闭时仍可手动翻译。只有这次手动点击会打开译文查看窗口，自动处理消息不会反复弹窗。
 
-如果长按菜单没有按钮，查看诊断中的 `messageMenuHookAvailable`、`messageMenuObserved`、`messageMenuInjections`、`messageMenuMissingComponents` 和 `messageMenuNoContainer`。钩子可用只表示找到了接口；注入数增加后仍需实际查看菜单。**译文查看窗口能显示结果，也不等于原文下方的自动显示已适配。**
+Android 无需选中句子，长按整条文字消息即可。如果长按菜单没有按钮，先看 `messageMenuDiscoveryStatus`：`hooked` 表示已挂上实际模块，`waiting-for-classic-module` 表示等待延迟模块，`message-sheet-not-found` / `classic-lazy-resolution-failed` 表示尚未找到兼容入口，`patch-failed` 表示模块找到但挂钩失败。再查看诊断中的 `messageMenuHookAvailable`、`messageMenuObserved`、`messageMenuInjections`、`messageMenuMissingComponents` 和 `messageMenuNoContainer`。钩子可用只表示找到了接口；注入数增加后仍需实际查看菜单。**译文查看窗口能显示结果，也不等于原文下方的自动显示已适配。**
 
 ### 4. 自动翻译新消息和历史消息
 
@@ -265,7 +265,7 @@ Hello, welcome to the community.
 
 #### 第一步：确认版本和消息已加载
 
-先看 `pluginVersion` 是否为 `0.1.3`。再返回文字频道，等消息显示并稍微往上滚动，然后回到插件设置。
+先看 `pluginVersion` 是否为 `0.1.4`。再返回文字频道，等消息显示并稍微往上滚动，然后回到插件设置。
 
 旧版 0.1.0 曾出现 JSX 未观察到消息、原生桥找不到的情况。0.1.1 增加 `RowManager` 路径，0.1.3 继续发现尚未产生有效消息行的延迟模块；不要继续拿 0.1.0 的诊断判断新版本效果。
 
@@ -275,7 +275,7 @@ Hello, welcome to the community.
 
 | 字段 | 如何理解 |
 | --- | --- |
-| `pluginVersion` | 当前实际执行的代码版本，应为 `0.1.3` |
+| `pluginVersion` | 当前实际执行的代码版本，应为 `0.1.4` |
 | `currentChannelAvailable` | 是否读到了当前文字频道；false 时先进入频道 |
 | `loadedMessageCount` | 读到的已加载消息数；0 时先加载消息，再检查是否报读取问题 |
 | `messageStore` / `selectedChannelStore` | 对应 Store 接口是否找到；true 不代表其中一定有消息 |
@@ -354,7 +354,7 @@ Revenge Classic 版本：
 
 **当前状态：实验性版本，尚未确认完整适配 Android 16 / Discord 348.10。**
 
-手机实测反馈：0.1.2 能读取 25 条消息，但没有有效原生消息行观察和译文显示。0.1.3 新增长按单条翻译入口、延迟消息模块发现及调用/拒绝诊断。78 项自动测试覆盖代码行为，手机上的菜单和自动显示仍需实际确认。诊断中的已取得译文数、`nativeRowsObserved` 和 `nativeRowsTranslated` 是处理和渲染数据计数，重复渲染也可能累计，不能替代肉眼确认。
+手机实测反馈：0.1.3 能读取 25 条消息，观察到 50 次原生消息行、处理过 1 次译文行，但用户仍看不到中文，且消息菜单钩子为 false。0.1.4 增加 Classic 延迟菜单模块订阅，沿用官方 openLazy + hideActionSheet 签名，避免误接弹窗，并补上具体接入失败原因。82 项自动测试覆盖代码行为；尚未确认 0.1.4 手机菜单和原文下方显示效果。诊断中的已取得译文数、`nativeRowsObserved` 和 `nativeRowsTranslated` 是处理和渲染数据计数，重复渲染也可能累计，不能替代肉眼确认。
 
 正式使用前，请按上面的五项验收检查译文显示、历史滚动、频道切换、编辑消息、停止及清除。尚未通过这些检查时，不应把该手机标为兼容。
 

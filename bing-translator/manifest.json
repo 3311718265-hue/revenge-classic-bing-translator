@@ -7,8 +7,8 @@
     }
   ],
   "main": "index.js",
-  "version": "0.1.3",
-  "hash": "ab117b49b1672db30a90576644b40f2568360e4a183e5fec677136a4480dfcf1",
+  "version": "0.1.4",
+  "hash": "d1ab462977ccb59ae15b59fff4ab593e2e6f06e8e1a577bc71b52efedbcd26f6",
   "vendetta": {
     "icon": "ic_application_command_24px"
   }

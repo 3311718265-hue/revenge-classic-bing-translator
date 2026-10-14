@@ -1,10 +1,11 @@
 import type {MessageRef} from './classic';
 export type MenuSource={translateMessage(message:MessageRef):Promise<{text:string}|undefined>;getSettings():{targetLanguage:string};getStatus():{lastError:string|null}};
 export function installClassicMessageMenu(api:any,host:{React:any;getCurrentChannel():string|null;getLoadedMessages(channel:string):MessageRef[];observe(cb:()=>void):()=>void},source:MenuSource,stats:Record<string,any>):()=>void{
- let active=true,unpatch:(()=>void)|undefined;const busy=new Set<string>(),React=host.React;
+ let active=true,unpatch:(()=>void)|undefined,stopLazy:(()=>void)|undefined,lazyAttempted=false;
+ const busy=new Set<string>(),React=host.React,globals=globalThis as any;
  const safe=(fn:()=>any)=>{try{return fn();}catch{return undefined;}};
  const find=(...keys:string[])=>{
-  const modules=api?.metro?.modules;
+  const modules=api?.metro?.modules??globals.modules;
   if(modules&&typeof modules==='object')for(const entry of Object.values(modules) as any[]){
    if(!entry?.isInitialized||entry.hasError)continue;
    for(const value of [safe(()=>entry.publicModule?.exports),safe(()=>entry.publicModule?.exports?.default)])if(value&&safe(()=>keys.every(key=>value[key]!==undefined)))return value;
@@ -23,7 +24,7 @@ export function installClassicMessageMenu(api:any,host:{React:any;getCurrentChan
   const onPress=async()=>{
    if(!active||!current(message)||busy.has(message.id))return;
    if(source.getSettings().targetLanguage!==target){notify('目标语言已改变，请重新打开消息菜单。');return;}
-   busy.add(message.id);safe(()=>find('openLazy','hideActionSheet')?.hideActionSheet());
+   busy.add(message.id);safe(()=>find('hideActionSheet')?.hideActionSheet());
    try{
     const result=await source.translateMessage(message);
     if(!active||!current(message)||source.getSettings().targetLanguage!==target)return;
@@ -48,10 +49,13 @@ export function installClassicMessageMenu(api:any,host:{React:any;getCurrentChan
   };
   const result=walk(tree);if(inserted)stats.messageMenuInjections++;else stats.messageMenuNoContainer++;return result;
  };
- const discover=()=>{
-  if(!active||unpatch||typeof React?.cloneElement!=='function')return;
-  const sheets=find('openLazy','hideActionSheet'),before=api?.patcher?.before;
-  if(typeof sheets?.openLazy!=='function'||typeof before!=='function')return;
+ const before=api?.patcher?.before??globals.bunny?.api?.patcher?.before;
+ stats.messageMenuDiscoveryAttempts=0;stats.messageMenuDiscoveryStatus='waiting';
+ stats.messageMenuReactAvailable=typeof safe(()=>React?.cloneElement)==='function';
+ stats.messageMenuPatcherAvailable=typeof before==='function';
+ stats.messageMenuLazyAvailable=false;stats.messageMenuLazyPending=false;
+ const attach=(sheets:any)=>{
+  if(!active||unpatch||typeof safe(()=>sheets?.openLazy)!=='function'||typeof safe(()=>sheets?.hideActionSheet)!=='function')return;
   try{
    unpatch=before('openLazy',sheets,(args:any[])=>{
     if(!active)return;stats.messageMenuCalls++;const [lazy,key,props]=args;
@@ -66,9 +70,30 @@ export function installClassicMessageMenu(api:any,host:{React:any;getCurrentChan
       catch{stats.messageMenuInjectionErrors++;return tree;}
      }};
     });return next;
-   });stats.messageMenuHookAvailable=true;
-  }catch{stats.messageMenuInjectionErrors++;}
+   });stats.messageMenuHookAvailable=true;stats.messageMenuDiscoveryStatus='hooked';stats.messageMenuLazyPending=false;
+  }catch{stats.messageMenuInjectionErrors++;stats.messageMenuDiscoveryStatus='patch-failed';}
+ };
+ const discover=()=>{
+  if(!active||unpatch)return;
+  stats.messageMenuDiscoveryAttempts++;
+  if(!stats.messageMenuReactAvailable){stats.messageMenuDiscoveryStatus='react-unavailable';return;}
+  if(!stats.messageMenuPatcherAvailable){stats.messageMenuDiscoveryStatus='patcher-unavailable';return;}
+  // Classic alerts also exports openLazy. Use the same signature as Classic sheets.
+  attach(find('openLazy','hideActionSheet'));if(unpatch||stats.messageMenuDiscoveryStatus==='patch-failed')return;
+  stats.messageMenuDiscoveryStatus=stats.messageMenuLazyPending?'waiting-for-classic-module':'message-sheet-not-found';
+  const metro=globals.bunny?.metro;
+  if(lazyAttempted||typeof metro?.findByPropsLazy!=='function'||typeof metro?.lazy?.getLazyContext!=='function')return;
+  lazyAttempted=true;stats.messageMenuLazyAvailable=true;
+  // Classic getExports subscribes when a module is indexed and uninitialized;
+  // otherwise Classic resolves it synchronously through its own finder.
+  // Keep its disposer ourselves; patching a lazy proxy directly hides whether a hook exists.
+  try{
+   const proxy=metro.findByPropsLazy('openLazy','hideActionSheet'),context=metro.lazy.getLazyContext(proxy);
+   if(typeof context?.getExports!=='function'){stats.messageMenuDiscoveryStatus='classic-lazy-context-unavailable';return;}
+   stats.messageMenuLazyPending=true;stats.messageMenuDiscoveryStatus='waiting-for-classic-module';
+   stopLazy=context.getExports((sheets:any)=>{if(active){stats.messageMenuLazyPending=false;attach(sheets);if(!unpatch&&stats.messageMenuDiscoveryStatus!=='patch-failed')stats.messageMenuDiscoveryStatus='classic-module-missing-sheet-methods';}});
+  }catch{stats.messageMenuLazyPending=false;stats.messageMenuDiscoveryStatus='classic-lazy-resolution-failed';}
  };
  discover();const stopObserve=host.observe(discover);
- return()=>{if(!active)return;active=false;stopObserve();unpatch?.();busy.clear();stats.messageMenuHookAvailable=false;};
+ return()=>{if(!active)return;active=false;stopObserve();safe(()=>stopLazy?.());unpatch?.();busy.clear();stats.messageMenuHookAvailable=false;stats.messageMenuLazyPending=false;stats.messageMenuDiscoveryStatus='stopped';};
 }

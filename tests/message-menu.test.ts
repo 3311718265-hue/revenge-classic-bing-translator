@@ -4,7 +4,7 @@ import React from 'react';
 import TestRenderer,{act} from 'react-test-renderer';
 import {createClassicHost} from '../src/runtime/classic';
 const CHANNEL='100000000000000001',ID='200000000000000001';
-function fixture(){
+function fixture(options:{late?:boolean;alertsFirst?:boolean;patchFailure?:boolean}={}){
  const records=[{id:ID,channel_id:CHANNEL,content:'Hello'},{id:'200000000000000002',channel_id:CHANNEL,content:'Goodbye'}];
  const calls:any[]=[],shown:any[]=[],received:any[]=[];let selected=CHANNEL;
  function ActionSheet(p:any){return React.createElement('Sheet',null,p.children);}
@@ -14,16 +14,18 @@ function fixture(){
  const mod=Object.freeze({default:()=>tree});
  const sheet={openLazy(...args:any[]){received.push(args);},hideActionSheet(){calls.push('hide');}};
  const store={getMessages:()=>({_array:records}),getMessage:(_c:string,id:string)=>records.find(x=>x.id===id)};
+ let available=!options.late;
+ const alerts={openLazy(){},close(){}};
  const api={
-  metro:{common:{React,ReactNative:{}},findByProps(...keys:string[]){return keys.includes('openLazy')?sheet:keys.includes('ActionSheetRow')?{ActionSheet,ActionSheetRow}:keys.includes('ActionSheet')?{ActionSheet}:undefined;},findByStoreName(n:string){return n==='MessageStore'?store:n==='SelectedChannelStore'?{getChannelId:()=>selected}:undefined;}},
-  patcher:{before(name:string,parent:any,cb:any){const original=parent[name];parent[name]=function(...args:any[]){return original.apply(this,cb(args)??args);};return()=>{parent[name]=original;};}},
+  metro:{common:{React,ReactNative:{}},findByProps(...keys:string[]){return keys.includes('openLazy')?(options.alertsFirst&&keys.length===1?alerts:available?sheet:undefined):keys.includes('ActionSheetRow')?{ActionSheet,ActionSheetRow}:keys.includes('ActionSheet')?{ActionSheet}:undefined;},findByStoreName(n:string){return n==='MessageStore'?store:n==='SelectedChannelStore'?{getChannelId:()=>selected}:undefined;}},
+  patcher:{before(name:string,parent:any,cb:any){if(options.patchFailure)throw Error('Patch denied');const original=parent[name];parent[name]=function(...args:any[]){return original.apply(this,cb(args)??args);};return()=>{parent[name]=original;};}},
   ui:{alerts:{showConfirmationAlert(x:any){shown.push(x);}},toasts:{showToast(x:any){calls.push(x);}}}
  };
  const original=sheet.openLazy;const host=createClassicHost(api,{}, {log(){},warn(){},error(){}});
  const source={async translateMessage(message:any){calls.push(message);return{text:'中文 '+message.content};},getTranslation(){return undefined;},getSettings(){return{targetLanguage:'zh-CN'};},getStatus(){return{lastError:null};}};
  assert.equal(typeof (host as any).installMessageMenu,'function','Classic host must expose a message menu integration');
  const stop=(host as any).installMessageMenu(source);
- return{host,source,stop,api,sheet,records,calls,shown,received,original,tree,select(v:string){selected=v;},async open(index=0,key='MessageActionSheet'){
+ return{host,source,stop,api,sheet,records,calls,shown,received,original,tree,load(){available=true;},select(v:string){selected=v;},async open(index=0,key='MessageActionSheet'){
   sheet.openLazy(Promise.resolve(mod),key,{message:records[index]});const loaded=await received.at(-1)[0];return loaded.default({message:records[index]});
  }};
 }
@@ -35,6 +37,37 @@ test('Classic message long press exposes a translate row inside the sheet withou
   await act(async()=>{await row.props.onPress();});assert.equal(f.calls.find(x=>typeof x==='object').id,ID);assert.match(f.shown[0].content,/中文 Hello/);
   assert.equal((f.tree as any).props.children.props.children.props.children.props.children.props.label,'Copy');
  }finally{if(renderer)act(()=>renderer.unmount());f.stop();}assert.equal(f.sheet.openLazy,f.original);
+});
+
+test('Classic lazy module subscription attaches the menu when it loads without a message event',async()=>{
+ const globals=globalThis as any,old=globals.bunny;let resolve:((exports:any)=>void)|undefined,cancelled=0;
+ globals.bunny={metro:{findByPropsLazy(){return{};},lazy:{getLazyContext(){return{getExports(cb:any){resolve=cb;return()=>{cancelled++;resolve=undefined;};}};}}}};
+ let f:ReturnType<typeof fixture>|undefined;
+ try{
+  f=fixture({late:true});assert.equal(f.host.diagnostics().messageMenuHookAvailable,false);
+  assert.ok(resolve,'must subscribe to the Classic menu module rather than miss later initialization');
+  f.load();resolve(f.sheet);
+  assert.equal(f.host.diagnostics().messageMenuHookAvailable,true);
+  let r:any;act(()=>{r=TestRenderer.create((f as any).tree);});act(()=>r.unmount());
+  const rendered=await f.open();act(()=>{r=TestRenderer.create(rendered);});
+  assert.ok(r.root.findAllByType('MenuRow').some((x:any)=>x.props.label==='翻译这条消息'));act(()=>r.unmount());
+ }finally{f?.stop();globals.bunny=old;}assert.equal(cancelled,1,'unload must cancel the lazy subscription');
+});
+
+test('pending Classic menu resolution is cancelled on unload',()=>{
+ const globals=globalThis as any,old=globals.bunny;let resolve:((exports:any)=>void)|undefined,cancelled=0;
+ globals.bunny={metro:{findByPropsLazy(){return{};},lazy:{getLazyContext(){return{getExports(cb:any){resolve=cb;return()=>{cancelled++;};}};}}}};
+ let f:ReturnType<typeof fixture>|undefined;
+ try{f=fixture({late:true});assert.ok(resolve);f.stop();resolve(f.sheet);assert.equal(f.sheet.openLazy,f.original);assert.equal(cancelled,1);}
+ finally{f?.stop();globals.bunny=old;}
+});
+
+test('Classic alerts openLazy must not be mistaken for the message sheet API',async()=>{
+ const f=fixture({alertsFirst:true});try{assert.equal(f.host.diagnostics().messageMenuHookAvailable,true);assert.notEqual(await f.open(),f.tree,'message sheets must still be intercepted when alerts initialize first');}finally{f.stop();}
+});
+
+test('a discovered sheet that cannot be patched reports patch failure rather than missing module',()=>{
+ const f=fixture({patchFailure:true});try{assert.equal(f.host.diagnostics().messageMenuHookAvailable,false);assert.equal(f.host.diagnostics().messageMenuDiscoveryStatus,'patch-failed');}finally{f.stop();}
 });
 test('a cached lazy sheet wrapper resolves the actual message props instead of its first opening',async()=>{
  const f=fixture();try{

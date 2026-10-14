@@ -26,8 +26,8 @@ var ClassicBingPlugin = (() => {
 
   // src/runtime/message-menu.ts
   function installClassicMessageMenu(api, host, source, stats) {
-    let active = true, unpatch;
-    const busy = /* @__PURE__ */ new Set(), React = host.React;
+    let active = true, unpatch, stopLazy, lazyAttempted = false;
+    const busy = /* @__PURE__ */ new Set(), React = host.React, globals = globalThis;
     const safe = (fn) => {
       try {
         return fn();
@@ -36,7 +36,7 @@ var ClassicBingPlugin = (() => {
       }
     };
     const find = (...keys) => {
-      const modules = api?.metro?.modules;
+      const modules = api?.metro?.modules ?? globals.modules;
       if (modules && typeof modules === "object") for (const entry of Object.values(modules)) {
         if (!entry?.isInitialized || entry.hasError) continue;
         for (const value of [safe(() => entry.publicModule?.exports), safe(() => entry.publicModule?.exports?.default)]) if (value && safe(() => keys.every((key) => value[key] !== void 0))) return value;
@@ -63,7 +63,7 @@ var ClassicBingPlugin = (() => {
           return;
         }
         busy.add(message.id);
-        safe(() => find("openLazy", "hideActionSheet")?.hideActionSheet());
+        safe(() => find("hideActionSheet")?.hideActionSheet());
         try {
           const result2 = await source.translateMessage(message);
           if (!active || !current(message) || source.getSettings().targetLanguage !== target) return;
@@ -110,10 +110,15 @@ var ClassicBingPlugin = (() => {
       else stats.messageMenuNoContainer++;
       return result;
     };
-    const discover = () => {
-      if (!active || unpatch || typeof React?.cloneElement !== "function") return;
-      const sheets = find("openLazy", "hideActionSheet"), before = api?.patcher?.before;
-      if (typeof sheets?.openLazy !== "function" || typeof before !== "function") return;
+    const before = api?.patcher?.before ?? globals.bunny?.api?.patcher?.before;
+    stats.messageMenuDiscoveryAttempts = 0;
+    stats.messageMenuDiscoveryStatus = "waiting";
+    stats.messageMenuReactAvailable = typeof safe(() => React?.cloneElement) === "function";
+    stats.messageMenuPatcherAvailable = typeof before === "function";
+    stats.messageMenuLazyAvailable = false;
+    stats.messageMenuLazyPending = false;
+    const attach = (sheets) => {
+      if (!active || unpatch || typeof safe(() => sheets?.openLazy) !== "function" || typeof safe(() => sheets?.hideActionSheet) !== "function") return;
       try {
         unpatch = before("openLazy", sheets, (args) => {
           if (!active) return;
@@ -149,8 +154,49 @@ var ClassicBingPlugin = (() => {
           return next;
         });
         stats.messageMenuHookAvailable = true;
+        stats.messageMenuDiscoveryStatus = "hooked";
+        stats.messageMenuLazyPending = false;
       } catch {
         stats.messageMenuInjectionErrors++;
+        stats.messageMenuDiscoveryStatus = "patch-failed";
+      }
+    };
+    const discover = () => {
+      if (!active || unpatch) return;
+      stats.messageMenuDiscoveryAttempts++;
+      if (!stats.messageMenuReactAvailable) {
+        stats.messageMenuDiscoveryStatus = "react-unavailable";
+        return;
+      }
+      if (!stats.messageMenuPatcherAvailable) {
+        stats.messageMenuDiscoveryStatus = "patcher-unavailable";
+        return;
+      }
+      attach(find("openLazy", "hideActionSheet"));
+      if (unpatch || stats.messageMenuDiscoveryStatus === "patch-failed") return;
+      stats.messageMenuDiscoveryStatus = stats.messageMenuLazyPending ? "waiting-for-classic-module" : "message-sheet-not-found";
+      const metro = globals.bunny?.metro;
+      if (lazyAttempted || typeof metro?.findByPropsLazy !== "function" || typeof metro?.lazy?.getLazyContext !== "function") return;
+      lazyAttempted = true;
+      stats.messageMenuLazyAvailable = true;
+      try {
+        const proxy = metro.findByPropsLazy("openLazy", "hideActionSheet"), context = metro.lazy.getLazyContext(proxy);
+        if (typeof context?.getExports !== "function") {
+          stats.messageMenuDiscoveryStatus = "classic-lazy-context-unavailable";
+          return;
+        }
+        stats.messageMenuLazyPending = true;
+        stats.messageMenuDiscoveryStatus = "waiting-for-classic-module";
+        stopLazy = context.getExports((sheets) => {
+          if (active) {
+            stats.messageMenuLazyPending = false;
+            attach(sheets);
+            if (!unpatch && stats.messageMenuDiscoveryStatus !== "patch-failed") stats.messageMenuDiscoveryStatus = "classic-module-missing-sheet-methods";
+          }
+        });
+      } catch {
+        stats.messageMenuLazyPending = false;
+        stats.messageMenuDiscoveryStatus = "classic-lazy-resolution-failed";
       }
     };
     discover();
@@ -159,9 +205,12 @@ var ClassicBingPlugin = (() => {
       if (!active) return;
       active = false;
       stopObserve();
+      safe(() => stopLazy?.());
       unpatch?.();
       busy.clear();
       stats.messageMenuHookAvailable = false;
+      stats.messageMenuLazyPending = false;
+      stats.messageMenuDiscoveryStatus = "stopped";
     };
   }
 
@@ -805,7 +854,7 @@ var ClassicBingPlugin = (() => {
       installMessageMenu,
       installNativeTranslations,
       diagnostics: () => ({
-        pluginVersion: "0.1.3",
+        pluginVersion: "0.1.4",
         classicApi: "vendetta + bunny.api.react.jsx",
         currentChannelAvailable: !!getCurrentChannel(),
         loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,

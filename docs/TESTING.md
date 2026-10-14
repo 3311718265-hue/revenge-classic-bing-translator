@@ -1,6 +1,15 @@
 # 构建与验证记录
 
-日期：2026-10-13（Asia/Hong_Kong）。版本：0.1.3。
+日期：2026-10-14（Asia/Hong_Kong）。版本：0.1.4。
+
+## 0.1.4 Classic 延迟消息菜单模块接入
+
+用户手机 0.1.3 的 messageMenuHookAvailable=false、calls/observed/injections=0，证明尚未接入菜单入口；消息行观察 50、译文行处理 1 不能证明实际显示。
+
+新增延迟模块到达而没有消息事件、卸载前取消订阅、同名 alerts.openLazy 误匹配和补丁失败诊断四项回归。新增测试在旧实现或审查发现的中间错误实现上实际失败，修复后完整检查 82 项通过。沿用 Classic 官方 sheets 的 openLazy + hideActionSheet 签名，通过 bunny.metro.lazy.getLazyContext(proxy).getExports 解析；已索引未初始化模块会被订阅，未索引或已初始化模块由 Classic 同步查找。自行保存订阅 disposer，卸载取消且晚到回调不能重新挂钩。
+
+使用 Classic 实际 npm 依赖 spitroast@1.4.4 独立执行菜单和原生行测试 19 项通过；其中宿主/模块加载仍为受控环境。类型检查、编译、包哈希和 Classic 生成包生命周期校验通过。以上结果不证明手机消息菜单或原生译文已经显示。0.1.4 手机验收待进行。
+
 
 ## 0.1.3 消息长按入口与实际生成路径诊断
 
