@@ -855,7 +855,7 @@ var ClassicBingPlugin = (() => {
       installMessageMenu,
       installNativeTranslations,
       diagnostics: () => ({
-        pluginVersion: "0.1.6",
+        pluginVersion: "0.1.7",
         classicApi: "vendetta + bunny.api.react.jsx",
         currentChannelAvailable: !!getCurrentChannel(),
         loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,
@@ -1314,6 +1314,8 @@ var ClassicBingPlugin = (() => {
       this.seen = /* @__PURE__ */ new Map();
       this.suppressed = /* @__PURE__ */ new Set();
       this.failed = /* @__PURE__ */ new Map();
+      this.selectionListeners = /* @__PURE__ */ new Set();
+      this.selectionSignature = null;
       this.listeners = /* @__PURE__ */ new Set();
       this.epoch = 0;
       this.lastError = null;
@@ -1378,6 +1380,7 @@ var ClassicBingPlugin = (() => {
     }
     scan() {
       this.channelChanged();
+      this.refreshSelection();
       if (this.disposed || !this.current) return;
       this.reconcile(this.options.getLoadedMessages(this.current));
       if (!this.settings.autoTranslate) return;
@@ -1552,6 +1555,74 @@ var ClassicBingPlugin = (() => {
       this.emit();
       if (this.settings.autoTranslate) this.scan();
     }
+    subscribeSelection(listener) {
+      if (this.disposed) return () => {
+      };
+      this.selectionListeners.add(listener);
+      if (this.selectionListeners.size === 1) this.selectionSignature = this.selectionFingerprint();
+      listener();
+      return () => {
+        this.selectionListeners.delete(listener);
+        if (!this.selectionListeners.size) this.selectionSignature = null;
+      };
+    }
+    selectionFingerprint() {
+      const snapshot = this.getSelectionSnapshot();
+      return JSON.stringify([snapshot.channelId, snapshot.messages.map((m) => [m.id, m.content])]);
+    }
+    refreshSelection() {
+      if (!this.selectionListeners.size) return;
+      const next = this.selectionFingerprint();
+      if (next === this.selectionSignature) return;
+      this.selectionSignature = next;
+      for (const listener of [...this.selectionListeners]) listener();
+    }
+    getSelectionSnapshot() {
+      const channelId = this.disposed ? null : this.options.getCurrentChannel();
+      return { channelId, messages: channelId ? this.options.getLoadedMessages(channelId).filter((m) => m.channelId === channelId && m.content.trim()).map((m) => ({ ...m })).sort(byId) : [] };
+    }
+    async translateSelected(channelId, messages) {
+      if (this.disposed) return;
+      this.channelChanged();
+      if (!this.current || channelId !== this.current) {
+        this.lastError = "\u6240\u9009\u6D88\u606F\u4E0D\u5C5E\u4E8E\u5F53\u524D\u9891\u9053\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u3002";
+        this.emit();
+        return;
+      }
+      const loaded = new Map(this.options.getLoadedMessages(channelId).map((m) => [m.id, m]));
+      const chosen = /* @__PURE__ */ new Map();
+      for (const message of messages) {
+        const latest = message && loaded.get(message.id);
+        if (!latest || message.channelId !== channelId || latest.channelId !== channelId || latest.content !== message.content) {
+          this.lastError = "\u6240\u9009\u6D88\u606F\u5DF2\u66F4\u6539\u6216\u79FB\u9664\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u3002";
+          this.emit();
+          return;
+        }
+        if (latest.content.trim()) chosen.set(latest.id, { ...latest });
+      }
+      if (!chosen.size) {
+        this.lastError = "\u8BF7\u5148\u52FE\u9009\u9700\u8981\u7FFB\u8BD1\u7684\u6D88\u606F\u3002";
+        this.emit();
+        return;
+      }
+      const epoch = this.epoch;
+      let skipped = 0;
+      this.lastError = null;
+      this.emit();
+      for (const message of [...chosen.values()].sort(byId)) {
+        if (this.disposed || this.epoch !== epoch || this.current !== channelId || this.options.getCurrentChannel() !== channelId) return;
+        const latest = this.options.getLoadedMessages(channelId).find((m) => m.id === message.id && m.channelId === channelId);
+        if (!latest || latest.content !== message.content) {
+          skipped++;
+          continue;
+        }
+        await this.schedule(message, true, true);
+      }
+      if (skipped && this.epoch === epoch && !this.disposed) {
+        this.lastError = "\u5DF2\u8DF3\u8FC7 " + skipped + " \u6761\u5DF2\u66F4\u6539\u6216\u79FB\u9664\u7684\u6D88\u606F\uFF0C\u8BF7\u91CD\u65B0\u52FE\u9009\u3002";
+        this.emit();
+      }
+    }
     async translateMessage(message) {
       if (this.disposed) return;
       this.channelChanged();
@@ -1594,6 +1665,8 @@ var ClassicBingPlugin = (() => {
     }
     dispose() {
       this.disposed = true;
+      this.selectionListeners.clear();
+      this.selectionSignature = null;
       this.cancel();
       this.records.clear();
       this.cache.clear();
@@ -1705,6 +1778,67 @@ var ClassicBingPlugin = (() => {
       const settings = service.getSettings();
       const status = service.getStatus();
       const [localError, setLocalError] = React.useState(null);
+      const [selection, setSelection] = React.useState(null);
+      const [selectionBusy, setSelectionBusy] = React.useState(false);
+      const [, setSelectionRevision] = React.useState(0);
+      React.useEffect(() => {
+        if (!selection) return;
+        let mounted = true;
+        const stop = service.subscribeSelection(() => {
+          if (mounted) setSelectionRevision((value) => value + 1);
+        });
+        return () => {
+          mounted = false;
+          stop();
+        };
+      }, [!!selection]);
+      const snapshot = selection ? service.getSelectionSnapshot() : { channelId: null, messages: [] };
+      const selectionSignature = JSON.stringify(snapshot.messages.map((m) => [m.id, m.content]));
+      const chosenMessages = selection?.channelId === snapshot.channelId ? snapshot.messages.filter((m) => selection.messages.get(m.id)?.content === m.content) : [];
+      React.useEffect(() => {
+        if (!selection) return;
+        if (selection.channelId !== snapshot.channelId) {
+          setSelection(null);
+          return;
+        }
+        const live = new Map(snapshot.messages.map((m) => [m.id, m.content]));
+        const kept = new Map([...selection.messages.entries()].filter(([id, m]) => live.get(id) === m.content));
+        if (kept.size !== selection.messages.size) setSelection((current) => current === selection ? { ...current, messages: kept } : current);
+      }, [snapshot.channelId, selectionSignature, selection]);
+      function openSelection() {
+        const current = service.getSelectionSnapshot();
+        if (!current.channelId || !current.messages.length) {
+          setLocalError("\u5F53\u524D\u9891\u9053\u6CA1\u6709\u53EF\u9009\u7684\u5DF2\u52A0\u8F7D\u6587\u5B57\u6D88\u606F\uFF0C\u8BF7\u5148\u6253\u5F00\u6587\u5B57\u9891\u9053\u3002");
+          return;
+        }
+        service.stop();
+        setLocalError(null);
+        setSelection({ channelId: current.channelId, messages: /* @__PURE__ */ new Map(), visible: 25 });
+      }
+      function chooseMessage(message) {
+        setSelection((current) => {
+          if (!current || selectionBusy) return current;
+          const live = service.getSelectionSnapshot();
+          if (live.channelId !== current.channelId) return null;
+          if (!live.messages.some((m) => m.id === message.id && m.content === message.content)) return current;
+          const messages = new Map(current.messages);
+          if (messages.get(message.id)?.content === message.content) messages.delete(message.id);
+          else messages.set(message.id, { ...message });
+          return { ...current, messages };
+        });
+      }
+      async function translateSelection() {
+        if (!selection || selectionBusy || !chosenMessages.length) return;
+        setLocalError(null);
+        setSelectionBusy(true);
+        try {
+          await service.translateSelected(selection.channelId, chosenMessages);
+        } catch (error) {
+          setLocalError(redact(error instanceof Error ? error.message : String(error)));
+        } finally {
+          setSelectionBusy(false);
+        }
+      }
       function redact(text) {
         return settings.microsoftKey ? text.split(settings.microsoftKey).join("[redacted]") : text;
       }
@@ -1717,15 +1851,16 @@ var ClassicBingPlugin = (() => {
           return "\u8BCA\u65AD\u4FE1\u606F\u6682\u4E0D\u53EF\u7528";
         }
       }
-      function button(id, label, onPress, selected = false) {
+      function button(id, label, onPress, selected = false, disabled = false) {
         return h(Button, {
           key: id,
           testID: id,
           accessibilityRole: "button",
           accessibilityLabel: label,
-          accessibilityState: { selected },
+          accessibilityState: { selected, disabled },
+          disabled,
           onPress,
-          style: [styles.button, selected ? styles.selected : null]
+          style: [styles.button, selected ? styles.selected : null, disabled ? { opacity: 0.5 } : null]
         }, h(RN.Text, { style: styles.buttonText }, label));
       }
       function textInput(id, label, value, onChangeText, extra = {}) {
@@ -1746,6 +1881,7 @@ var ClassicBingPlugin = (() => {
       }
       async function translateLoaded() {
         setLocalError(null);
+        setSelection(null);
         try {
           await service.translateLoaded();
         } catch (error) {
@@ -1760,18 +1896,47 @@ var ClassicBingPlugin = (() => {
         h(
           RN.View,
           { style: styles.card },
-          toggle("auto-translate", "\u81EA\u52A8\u7FFB\u8BD1\u65B0\u6D88\u606F", settings.autoTranslate, (enabled) => enabled ? service.enableAuto() : service.configure({ autoTranslate: false })),
+          toggle("auto-translate", "\u81EA\u52A8\u7FFB\u8BD1\u65B0\u6D88\u606F", settings.autoTranslate, (enabled) => {
+            if (enabled) {
+              setSelection(null);
+              service.enableAuto();
+            } else service.configure({ autoTranslate: false });
+          }),
           h(RN.Text, { style: styles.hint }, "\u539F\u6587\u4FDD\u7559\uFF0C\u8BD1\u6587\u663E\u793A\u5728\u4E0B\u65B9\u3002\u53EA\u5904\u7406\u5F53\u524D\u9891\u9053\u5DF2\u52A0\u8F7D\u7684\u6D88\u606F\u3002"),
           h(
             RN.View,
             { style: styles.wrap },
             button("translate-loaded", "\u7FFB\u8BD1\u672C\u9891\u9053\u5DF2\u52A0\u8F7D\u6D88\u606F", translateLoaded),
+            button("open-selection", "\u9009\u62E9\u591A\u6761\u6D88\u606F", openSelection),
             button("stop-translation", "\u505C\u6B62\u7FFB\u8BD1", () => service.stop()),
             button("clear-translations", "\u6E05\u9664\u8BD1\u6587", () => service.clear())
           ),
           h(RN.Text, { style: styles.text, accessibilityLiveRegion: "polite" }, `${status.active ? "\u8FD0\u884C\u4E2D" : settings.autoTranslate ? "\u81EA\u52A8\u7FFB\u8BD1\u5F85\u547D" : "\u5DF2\u505C\u6B62"} \xB7 \u7B49\u5F85 ${status.pending} \xB7 \u5DF2\u53D6\u5F97\u8BD1\u6587 ${status.translated}`),
           status.lastError || localError ? h(RN.Text, { style: { color: colors.error, fontSize: 13, marginTop: 8 }, accessibilityLiveRegion: "polite" }, redact(status.lastError || localError)) : null
         ),
+        h(RN.Text, { style: [styles.hint, { marginBottom: 12 }] }, "\u8FDB\u5165\u591A\u9009\u4F1A\u6682\u505C\u81EA\u52A8\u7FFB\u8BD1\u548C\u6B63\u5728\u5904\u7406\u7684\u8BF7\u6C42\u3002\u5DF2\u6709\u8BD1\u6587\u4FDD\u7559\uFF0C\u53EF\u968F\u65F6\u91CD\u65B0\u5F00\u542F\u81EA\u52A8\u7FFB\u8BD1\u3002"),
+        selection ? h(
+          RN.View,
+          { testID: "selection-panel", style: styles.card },
+          h(RN.Text, { style: styles.title }, "\u52FE\u9009\u6D88\u606F \xB7 \u5DF2\u9009 " + chosenMessages.length + " \u6761"),
+          h(RN.Text, { style: styles.hint }, "\u4EC5\u7FFB\u8BD1\u52FE\u9009\u7684\u666E\u901A\u6587\u5B57\u6D88\u606F\uFF0C\u8BD1\u6587\u663E\u793A\u5728\u5BF9\u5E94\u539F\u6587\u4E0B\u65B9\u3002\u81EA\u52A8\u7FFB\u8BD1\u5DF2\u6682\u505C\u3002"),
+          h(
+            RN.View,
+            { style: styles.wrap },
+            button("translate-selected", selectionBusy ? "\u6B63\u5728\u7FFB\u8BD1\u6240\u9009" : "\u7FFB\u8BD1\u6240\u9009\uFF08" + chosenMessages.length + "\uFF09", translateSelection, false, selectionBusy || !chosenMessages.length),
+            button("clear-selection", "\u6E05\u7A7A\u9009\u62E9", () => setSelection((current) => current ? { ...current, messages: /* @__PURE__ */ new Map() } : null), false, selectionBusy),
+            button("close-selection", "\u6536\u8D77", () => setSelection(null), false, selectionBusy)
+          ),
+          ...snapshot.messages.slice(0, selection.visible).map((message, index) => {
+            const checked = selection.messages.get(message.id)?.content === message.content;
+            return h(
+              Button,
+              { key: message.id, testID: "select-message-" + message.id, accessibilityRole: "checkbox", accessibilityLabel: index + 1 + ". " + message.content, accessibilityState: { checked, disabled: selectionBusy }, disabled: selectionBusy, onPress: () => chooseMessage(message), style: [styles.button, checked ? styles.selected : null] },
+              h(RN.Text, { style: styles.buttonText }, (checked ? "\u2611 " : "\u2610 ") + (index + 1) + ". " + message.content)
+            );
+          }),
+          selection.visible < snapshot.messages.length ? button("more-selection-messages", "\u663E\u793A\u66F4\u591A\uFF08" + Math.min(selection.visible, snapshot.messages.length) + "/" + snapshot.messages.length + "\uFF09", () => setSelection((current) => current ? { ...current, visible: current.visible + 25 } : null), false, selectionBusy) : null
+        ) : null,
         h(
           RN.View,
           { style: styles.card },

@@ -14,6 +14,7 @@ export class TranslationService{
  private cooldown=new RateGate(0);
  private records=new Map<string,RecordEntry>();private cache=new Map<string,{time:number;result:TranslationResult}>();
  private pending=new Map<string,Pending>();private seen=new Map<string,MessageRef>();private suppressed=new Set<string>();private failed=new Map<string,number>();
+ private selectionListeners=new Set<()=>void>();private selectionSignature:string|null=null;
  private listeners=new Set<()=>void>();private epoch=0;private current:string|null;private lastError:string|null=null;private disposed=false;private scanRunning=false;private scanAgain=false;
  constructor(private readonly options:Options){this.settings=this.validate({...DEFAULT_SETTINGS,...options.persistedSettings,...options.settings});this.current=options.getCurrentChannel();this.makeProvider();}
  private validate(value:Settings):Settings{
@@ -34,7 +35,7 @@ export class TranslationService{
  getStatus(){return {pending:this.pending.size,active:this.queue.isActive,lastError:this.lastError,translated:this.records.size,diagnostics:this.options.diagnostics?.()};}
  getTranslation(message:MessageRef):TranslationResult|undefined{if(this.disposed||message.channelId!==this.current)return;const item=this.records.get(this.messageKey(message));if(item?.source===message.content&&item.target===this.settings.targetLanguage)return item.result;}
  consider(message:MessageRef):void{if(this.settings.autoTranslate&&!this.disposed)void this.schedule(message,false);}
- scan():void{this.channelChanged();if(this.disposed||!this.current)return;this.reconcile(this.options.getLoadedMessages(this.current));if(!this.settings.autoTranslate)return;if(this.scanRunning){this.scanAgain=true;return;}
+ scan():void{this.channelChanged();this.refreshSelection();if(this.disposed||!this.current)return;this.reconcile(this.options.getLoadedMessages(this.current));if(!this.settings.autoTranslate)return;if(this.scanRunning){this.scanAgain=true;return;}
   this.scanRunning=true;
   void (async()=>{try{do{this.scanAgain=false;const epoch=this.epoch,channel=this.current;if(!channel)break;const messages=this.options.getLoadedMessages(channel).slice().sort(byId);
    for(let offset=0;offset<messages.length;offset+=100){if(this.disposed||!this.settings.autoTranslate||this.current!==channel||this.epoch!==epoch)break;await Promise.all(messages.slice(offset,offset+100).map(message=>this.schedule(message,false,true)));}
@@ -106,6 +107,43 @@ export class TranslationService{
   if(providerChange){this.cancel();this.records.clear();this.cache.clear();this.failed.clear();this.suppressed.clear();this.makeProvider();}
   if(!this.settings.autoTranslate&&previous.autoTranslate)this.cancel();this.emit();if(this.settings.autoTranslate)this.scan();
  }
+ subscribeSelection(listener:()=>void):()=>void{
+  if(this.disposed)return()=>{};
+  this.selectionListeners.add(listener);
+  if(this.selectionListeners.size===1)this.selectionSignature=this.selectionFingerprint();
+  listener();
+  return()=>{this.selectionListeners.delete(listener);if(!this.selectionListeners.size)this.selectionSignature=null;};
+ }
+ private selectionFingerprint():string{const snapshot=this.getSelectionSnapshot();return JSON.stringify([snapshot.channelId,snapshot.messages.map(m=>[m.id,m.content])]);}
+ private refreshSelection():void{
+  if(!this.selectionListeners.size)return;
+  const next=this.selectionFingerprint();if(next===this.selectionSignature)return;this.selectionSignature=next;
+  for(const listener of [...this.selectionListeners])listener();
+ }
+ getSelectionSnapshot():{channelId:string|null;messages:MessageRef[]}{
+  const channelId=this.disposed?null:this.options.getCurrentChannel();
+  return {channelId,messages:channelId?this.options.getLoadedMessages(channelId).filter(m=>m.channelId===channelId&&m.content.trim()).map(m=>({...m})).sort(byId):[]};
+ }
+ async translateSelected(channelId:string,messages:MessageRef[]):Promise<void>{
+  if(this.disposed)return;this.channelChanged();
+  if(!this.current||channelId!==this.current){this.lastError='所选消息不属于当前频道，请重新选择。';this.emit();return;}
+  const loaded=new Map(this.options.getLoadedMessages(channelId).map(m=>[m.id,m]));
+  const chosen=new Map<string,MessageRef>();
+  for(const message of messages){
+   const latest=message&&loaded.get(message.id);
+   if(!latest||message.channelId!==channelId||latest.channelId!==channelId||latest.content!==message.content){this.lastError='所选消息已更改或移除，请重新选择。';this.emit();return;}
+   if(latest.content.trim())chosen.set(latest.id,{...latest});
+  }
+  if(!chosen.size){this.lastError='请先勾选需要翻译的消息。';this.emit();return;}
+  const epoch=this.epoch;let skipped=0;this.lastError=null;this.emit();
+  for(const message of [...chosen.values()].sort(byId)){
+   if(this.disposed||this.epoch!==epoch||this.current!==channelId||this.options.getCurrentChannel()!==channelId)return;
+   const latest=this.options.getLoadedMessages(channelId).find(m=>m.id===message.id&&m.channelId===channelId);
+   if(!latest||latest.content!==message.content){skipped++;continue;}
+   await this.schedule(message,true,true);
+  }
+  if(skipped&&this.epoch===epoch&&!this.disposed){this.lastError='已跳过 '+skipped+' 条已更改或移除的消息，请重新勾选。';this.emit();}
+ }
  async translateMessage(message:MessageRef):Promise<TranslationResult|undefined>{
   if(this.disposed)return;this.channelChanged();
   if(message.channelId!==this.current)return;
@@ -119,5 +157,5 @@ export class TranslationService{
  stop():void{this.settings.autoTranslate=false;this.persist();this.cancel();this.emit();}
  clear():void{for(const [key,message]of this.seen)this.suppressed.add(JSON.stringify([key,this.settings.targetLanguage,message.content]));this.cancel();this.records.clear();this.cache.clear();this.failed.clear();this.lastError=null;this.emit();}
  deleted(channelId:string,messageId:string):void{const key=this.messageKey({id:messageId,channelId});this.records.delete(key);this.seen.delete(key);this.release(key);this.emit();}
- dispose():void{this.disposed=true;this.cancel();this.records.clear();this.cache.clear();this.seen.clear();this.failed.clear();this.suppressed.clear();this.emit();this.listeners.clear();}
+ dispose():void{this.disposed=true;this.selectionListeners.clear();this.selectionSignature=null;this.cancel();this.records.clear();this.cache.clear();this.seen.clear();this.failed.clear();this.suppressed.clear();this.emit();this.listeners.clear();}
 }

@@ -427,7 +427,7 @@ export function createClassicHost(api:any,storage:any,logger:any):ClassicHost {
   const installMessageMenu=(source:MenuSource)=>installClassicMessageMenu(api,{React,getCurrentChannel,getLoadedMessages,observe},source,menuStats);
   return {React,RN,storage:storage??{},logger:log,getCurrentChannel,getLoadedMessages,observe,installMessageRenderer,installMessageMenu,installNativeTranslations,
     diagnostics:()=>({
-      pluginVersion:'0.1.6',classicApi:'vendetta + bunny.api.react.jsx',
+      pluginVersion:'0.1.7',classicApi:'vendetta + bunny.api.react.jsx',
       currentChannelAvailable:!!getCurrentChannel(),loadedMessageCount:getCurrentChannel()?getLoadedMessages(getCurrentChannel()!).length:0,
       messageStore:typeof messageStore?.getMessages==='function'&&typeof messageStore?.getMessage==='function',
       selectedChannelStore:typeof channelStore?.getChannelId==='function',

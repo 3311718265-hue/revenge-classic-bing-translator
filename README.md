@@ -5,7 +5,7 @@
 <p>Revenge Classic 安卓插件 · 自动翻译新消息与已加载历史 · 自由选择目标语言</p>
 
 <p>
-  <a href="https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/manifest.json"><img src="https://img.shields.io/badge/version-0.1.6-5865F2?style=flat" alt="版本 0.1.6"></a>
+  <a href="https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/manifest.json"><img src="https://img.shields.io/badge/version-0.1.7-5865F2?style=flat" alt="版本 0.1.7"></a>
   <a href="#完整使用指南"><img src="https://img.shields.io/badge/Revenge-Classic-5865F2?style=flat" alt="Revenge Classic"></a>
   <a href="#兼容性与验证范围"><img src="https://img.shields.io/badge/Bing-experimental-b58115?style=flat" alt="Bing 网页接口为实验性接口"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2da44e?style=flat" alt="MIT License"></a>
@@ -69,7 +69,18 @@ Manager 和翻译插件各自更新。出现 **Revenge Update Failed** 时，按
 https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator/
 ```
 
-保留末尾 `/`。已安装的用户先更新插件并重启 Discord，在底部“本机诊断”确认 `pluginVersion` 为 `0.1.6`；不要重复安装两份。
+保留末尾 `/`。已安装的用户先更新插件并重启 Discord，在底部“本机诊断”确认 `pluginVersion` 为 `0.1.7`；不要重复安装两份。
+
+### 勾选指定多条消息
+
+1. 先打开要翻译的文字频道，让需要的消息加载到手机。
+2. 在 Revenge Classic → Plugins → Bing Bilingual Translator 打开插件设置，点击 **选择多条消息**。
+3. 进入多选会暂停自动翻译和正在处理的请求，已有译文保留。
+4. 逐条勾选需要的消息。列表按消息先后排列；更多历史已加载时可点击 **显示更多**。
+5. 点击 **翻译所选（数量）**，然后返回频道。译文分别显示在各自原文下方，不弹结果窗口。
+6. 用 **清空选择** 重新挑选；用 **停止翻译** 中断处理。需要恢复自动翻译时，重新打开 **自动翻译新消息**。
+
+切换频道会清空选择。被编辑或移除的消息会取消勾选；处理中发生变化的后续消息会跳过，避免把新内容当成原来勾选的内容发送。只支持普通消息正文；嵌入卡片、图片和附件仍不支持。
 
 ### 开始翻译
 
@@ -78,7 +89,7 @@ https://3311718265-hue.github.io/revenge-classic-bing-translator/bing-translator
 3. 开启 **自动翻译新消息**，点击一次 **翻译本频道已加载消息**。
 4. 返回频道，查看外语原文下方的译文。之后可正常聊天或滚动加载历史。
 
-Bing 模式无需 API Key。在安卓上长按一条普通文字消息，选择 **翻译这条消息**，无需单独选中句子。手动和自动翻译都只在对应原文下方显示译文；0.1.6 取消了翻译成功后的译文弹窗，也不弹成功提示。失败请查看插件设置的状态。图片、附件和嵌入卡片（embed）的标题及正文目前不在翻译范围内。
+Bing 模式无需 API Key。在安卓上长按一条普通文字消息，选择 **翻译这条消息**，无需单独选中句子。手动和自动翻译都只在对应原文下方显示译文；0.1.7 取消了翻译成功后的译文弹窗，也不弹成功提示。失败请查看插件设置的状态。图片、附件和嵌入卡片（embed）的标题及正文目前不在翻译范围内。
 
 > 安装成功但没有译文？查看下方[完整排查步骤](#9-能安装但不显示译文按顺序排查)，先确认版本、当前频道和已加载消息数。
 
@@ -86,9 +97,9 @@ Bing 模式无需 API Key。在安卓上长按一条普通文字消息，选择 
 
 ## 完整使用指南
 
-适用插件：Bing Bilingual Translator 0.1.6。目标环境：Android 16、Discord 348.10、Revenge Classic。
+适用插件：Bing Bilingual Translator 0.1.7。目标环境：Android 16、Discord 348.10、Revenge Classic。
 
-本教程使用 Revenge Classic 的 Source URL 安装方式。无需 Root、悬浮窗或独立 APK。0.1.6 的静态检查、构建和 84 项测试通过；本次菜单修复代码已通过 USB 在安卓手机长按菜单中显示。Bing 网页接口仍可能受网络、地区、风控和限流影响。
+本教程使用 Revenge Classic 的 Source URL 安装方式。无需 Root、悬浮窗或独立 APK。0.1.7 的静态检查、构建和 92 项测试通过；本次菜单修复代码已通过 USB 在安卓手机长按菜单中显示。Bing 网页接口仍可能受网络、地区、风控和限流影响。
 
 ### 1. 已安装的用户：先更新
 
@@ -97,7 +108,7 @@ Bing 模式无需 API Key。在安卓上长按一条普通文字消息，选择 
 1. 打开 Discord 设置中的 Revenge Classic → Plugins，找到 **Bing Bilingual Translator**。
 2. 如果插件菜单提供更新或刷新操作，执行更新；确认插件处于启用状态。不同 Classic 版本的按钮位置和文字可能不同。
 3. 完全关闭 Discord 并重新打开。仅关闭设置页不会重新加载插件代码。Classic 在允许插件自动更新时，会在启动时检查 Source URL。
-4. 打开此插件的设置，拉到底部“本机诊断”，查看 `pluginVersion`，应显示 **`0.1.6`**。
+4. 打开此插件的设置，拉到底部“本机诊断”，查看 `pluginVersion`，应显示 **`0.1.7`**。
 5. 如果仍显示 `0.1.0`，先确认手机能够打开下面的 manifest 链接；记录自己的目标语言等设置，再卸载这个插件、从原 Source URL 重新安装并重启 Discord。
 
 重新安装可能需要重新填写设置。不要为了更新而清除整个 Discord 应用的数据，也不要安装名称相同但来源不同的插件来替代。
@@ -265,7 +276,7 @@ Android 无需选中句子，长按整条文字消息即可。如果长按菜单
 
 #### 第一步：确认版本和消息已加载
 
-先看 `pluginVersion` 是否为 `0.1.6`。再返回文字频道，等消息显示并稍微往上滚动，然后回到插件设置。
+先看 `pluginVersion` 是否为 `0.1.7`。再返回文字频道，等消息显示并稍微往上滚动，然后回到插件设置。
 
 旧版 0.1.0 曾出现 JSX 未观察到消息、原生桥找不到的情况。0.1.1 增加 `RowManager` 路径，0.1.3 继续发现尚未产生有效消息行的延迟模块；不要继续拿 0.1.0 的诊断判断新版本效果。
 
@@ -275,7 +286,7 @@ Android 无需选中句子，长按整条文字消息即可。如果长按菜单
 
 | 字段 | 如何理解 |
 | --- | --- |
-| `pluginVersion` | 当前实际执行的代码版本，应为 `0.1.6` |
+| `pluginVersion` | 当前实际执行的代码版本，应为 `0.1.7` |
 | `currentChannelAvailable` | 是否读到了当前文字频道；false 时先进入频道 |
 | `loadedMessageCount` | 读到的已加载消息数；0 时先加载消息，再检查是否报读取问题 |
 | `messageStore` / `selectedChannelStore` | 对应 Store 接口是否找到；true 不代表其中一定有消息 |
@@ -352,12 +363,10 @@ Revenge Classic 版本：
 
 ## 兼容性与验证范围
 
-**当前版本：0.1.6。手动和自动翻译均仅在原文下方显示译文，成功后不弹窗。**
+**0.1.7 新增在插件设置中勾选指定多条消息，只翻译所选；手动、自动翻译成功后均不弹译文窗口。**
 
-USB 实机已确认：在一台 Android 16 / app.revenge 348.10 / Revenge Classic 1b1d297-main 手机的 0.1.5 中，普通消息下方能显示中文，长按菜单可触发翻译，但成功后额外弹出译文窗口。0.1.6 删除这个额外窗口，继续使用同一服务及原文下方的渲染路径。新回归先在旧实现观察到弹窗调用而失败，再在修复后通过。完整 84 项自动检查通过。0.1.6 发布后仍需在手机上核对实际加载版本和无弹窗显示效果，不能用这些本地测试代替实机确认。
+当前目标环境是 Android 16 / app.revenge 348.10 / Revenge Classic 1b1d297-main。此前手机上已看到普通正文下方中文与长按翻译入口；取消结果弹窗的 0.1.6 已通过官方更新接口加载到手机。0.1.7 的多选列表、提交、编辑刷新、停止、缓存及无弹窗行为通过 92 项自动检查；发布后仍须分别确认手机加载版本与实际多选显示效果，不把本地检查替代实机验收。
 
-目前不翻译嵌入卡片（embed）、图片和附件。卡片长按直接复制的入口仍未适配。普通正文能翻译，不代表同一消息附带的卡片也会翻译。
+目前不翻译嵌入卡片（embed）、图片和附件，卡片长按直接复制的入口仍未适配。只翻译当前频道已加载消息；勾选列表不主动抓取更多 Discord 历史。诊断计数不等于屏幕显示成功。
 
-历史滚动、频道切换、消息编辑、停止及清除已有自动测试，尚未逐项完成这台手机的全部实机验收。诊断计数不等于屏幕显示成功。
-
-Bing 网页接口已完成有限的真实请求验证，仍可能受网络、地区和限流影响，不保证长期稳定。Microsoft 官方 API 为可选配置，尚未使用真实订阅密钥完成端到端验证。
+Bing 网页接口已完成有限真实请求验证，仍可能受网络、地区和限流影响，不保证长期稳定。Microsoft 官方 API 可选配置，尚未用真实订阅密钥完成端到端验证。
