@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import TestRenderer,{act} from 'react-test-renderer';
 import {createClassicHost} from '../src/runtime/classic';
+import {TranslationService} from '../src/core/service';
+import {createComponents} from '../src/ui/components';
 const CHANNEL='100000000000000001',ID='200000000000000001';
 function fixture(options:{late?:boolean;alertsFirst?:boolean;patchFailure?:boolean}={}){
  const records=[{id:ID,channel_id:CHANNEL,content:'Hello'},{id:'200000000000000002',channel_id:CHANNEL,content:'Goodbye'}];
@@ -34,7 +36,7 @@ test('Classic message long press exposes a translate row inside the sheet withou
   const rendered=await f.open();act(()=>{renderer=TestRenderer.create(rendered);});
   const row=renderer.root.findAllByType('MenuRow').find((x:any)=>x.props.label.includes('翻译'));
   assert.ok(row,'the native menu must have a visible translate action');
-  await act(async()=>{await row.props.onPress();});assert.equal(f.calls.find(x=>typeof x==='object').id,ID);assert.match(f.shown[0].content,/中文 Hello/);
+  await act(async()=>{await row.props.onPress();});assert.equal(f.calls.find(x=>typeof x==='object').id,ID);assert.equal(f.shown.length,0,'manual translation must not open a result dialog');
   assert.equal((f.tree as any).props.children.props.children.props.children.props.children.props.label,'Copy');
  }finally{if(renderer)act(()=>renderer.unmount());f.stop();}assert.equal(f.sheet.openLazy,f.original);
 });
@@ -92,4 +94,31 @@ test('closing or unloading does not leave an actionable stale translation menu',
   f.select('100000000000000009');await row.props.onPress();assert.equal(f.shown.length,0);assert.equal(f.calls.filter(x=>typeof x==='object').length,0);
   f.stop();await row.props.onPress();assert.equal(f.shown.length,0);act(()=>r.unmount());
  }finally{f.stop();}
+});
+
+test('manual menu translation updates the inline block once, uses cache and clears without a result dialog',async()=>{
+ const f=fixture();f.stop();
+ const host=createClassicHost(f.api,{}, {log(){},warn(){},error(){}});
+ let requests=0;
+ const service=new TranslationService({settings:{autoTranslate:false},getCurrentChannel:()=>host.getCurrentChannel(),getLoadedMessages:c=>host.getLoadedMessages(c),createProvider:()=>({async translate(){requests++;return{text:'你好',detectedLanguage:'en'};}})});
+ const RN=Object.fromEntries(['View','Text','ScrollView','TextInput','Switch','Pressable'].map(name=>[name,name]));
+ const components=createComponents({...host,RN},service);
+ const stop=host.installMessageMenu(service);let screen:any,menu:any;
+ const message=host.getLoadedMessages(CHANNEL)[0];
+ const texts=()=>screen.root.findAllByType('Text').map((node:any)=>node.children.filter((v:any)=>typeof v==='string').join(''));
+ try{
+  act(()=>{screen=TestRenderer.create(components.wrapMessage(React.createElement('Text',null,message.content),message));});
+  const tree=await f.open();act(()=>{menu=TestRenderer.create(tree);});
+  const action=menu.root.findAllByType('MenuRow').find((node:any)=>node.props.label==='翻译这条消息');
+  await act(async()=>{await action.props.onPress();});
+  assert.equal(f.shown.length,0,'a successful manual request must render inline instead of opening an alert');
+  assert.deepEqual(texts(),['Hello','译文 · zh-CN · en → zh-CN','你好']);
+  await act(async()=>{await action.props.onPress();});
+  assert.equal(requests,1,'a repeat menu press must reuse the translated content');
+  assert.equal(texts().filter((v:string)=>v==='你好').length,1);
+  assert.equal(f.shown.length,0);
+  act(()=>service.stop());assert.equal(service.getStatus().pending,0);
+  act(()=>service.clear());assert.deepEqual(texts(),['Hello']);
+  assert.equal(f.records[0].content,'Hello');
+ }finally{if(menu)act(()=>menu.unmount());if(screen)act(()=>screen.unmount());service.dispose();stop();}
 });

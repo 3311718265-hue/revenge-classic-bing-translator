@@ -76,10 +76,6 @@ var ClassicBingPlugin = (() => {
             notify(source.getStatus().lastError ?? "\u6CA1\u6709\u53D6\u5F97\u8BD1\u6587\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u67E5\u770B\u72B6\u6001\u3002");
             return;
           }
-          const show = api.ui?.alerts?.showConfirmationAlert;
-          if (typeof show === "function") show({ title: "\u8BD1\u6587 \xB7 " + target, content: result2.text === message.content ? "\u670D\u52A1\u8FD4\u56DE\u5185\u5BB9\u4E0E\u539F\u6587\u76F8\u540C\u3002\n\n" + result2.text : result2.text, confirmText: "\u5173\u95ED", onConfirm: () => {
-          } });
-          else notify("\u5DF2\u53D6\u5F97\u8BD1\u6587\uFF1B\u6B64\u5BA2\u6237\u7AEF\u7F3A\u5C11\u8BD1\u6587\u67E5\u770B\u7A97\u53E3\uFF0C\u8BF7\u68C0\u67E5\u63D2\u4EF6\u8BCA\u65AD\u3002");
         } catch {
           if (active) notify("\u7FFB\u8BD1\u8BF7\u6C42\u5931\u8D25\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u67E5\u770B\u72B6\u6001\u3002");
         } finally {
@@ -859,7 +855,7 @@ var ClassicBingPlugin = (() => {
       installMessageMenu,
       installNativeTranslations,
       diagnostics: () => ({
-        pluginVersion: "0.1.5",
+        pluginVersion: "0.1.6",
         classicApi: "vendetta + bunny.api.react.jsx",
         currentChannelAvailable: !!getCurrentChannel(),
         loadedMessageCount: getCurrentChannel() ? getLoadedMessages(getCurrentChannel()).length : 0,

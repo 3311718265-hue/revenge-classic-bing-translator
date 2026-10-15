@@ -34,10 +34,7 @@ export function installClassicMessageMenu(api:any,host:{React:any;getCurrentChan
     const result=await source.translateMessage(message);
     if(!active||!current(message)||source.getSettings().targetLanguage!==target)return;
     if(!result?.text){notify(source.getStatus().lastError??'没有取得译文，请在插件设置查看状态。');return;}
-    // Only an explicit menu press opens this preview; automatic translation never does.
-    const show=api.ui?.alerts?.showConfirmationAlert;
-    if(typeof show==='function')show({title:'译文 · '+target,content:result.text===message.content?'服务返回内容与原文相同。\n\n'+result.text:result.text,confirmText:'关闭',onConfirm:()=>{}});
-    else notify('已取得译文；此客户端缺少译文查看窗口，请检查插件诊断。');
+    // TranslationService notifies the inline renderer; successful translation opens no dialog.
    }catch{if(active)notify('翻译请求失败，请在插件设置查看状态。');}finally{busy.delete(message.id);}
   };
   const Boundary=api.ui?.components?.ErrorBoundary;
